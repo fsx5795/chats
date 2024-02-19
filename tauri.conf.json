@@ -4,6 +4,13 @@
         "withGlobalTauri": true
     },
     "tauri": {
+        "allowlist": {
+            "window": {
+                "show": true,
+                "hide": true,
+                "close": true
+            }
+        },
         "bundle": {
             "identifier": "charts"
         },
@@ -13,6 +20,9 @@
                 "title": "charts",
                 "visible": false
             }
-        ]
+        ],
+        "systemTray": {
+            "iconPath": "icons/icon.png"
+        }
     }
 }
