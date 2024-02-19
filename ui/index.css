@@ -1,0 +1,17 @@
+* {
+    background-color: rgb(1, 1, 2);
+}
+body > div {
+    background-color: rgb(1, 1, 2);
+    display: inline-block;
+    height: 100%;
+}
+#tools {
+    width: 50px;
+    display: flex;
+    flex-direction: column;
+}
+button {
+    width: 30px;
+    height: 30px;
+}

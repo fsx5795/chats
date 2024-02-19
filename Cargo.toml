@@ -1,0 +1,16 @@
+[package]
+name = 'charts'
+version = '0.0.0'
+edition = '2021'
+
+[build-dependencies]
+tauri-build = { version = '^1.5' , features = [] }
+
+[dependencies]
+tauri = { version = '^1.5' , features = [] }
+
+[source.crates-io]
+replace-with = 'ustc'
+
+[source.ustc]
+registry = "git://mirrors.ustc.edu.cn/crates.io-index"

@@ -1,0 +1,18 @@
+{
+    "build": {
+        "devPath": "./ui",
+        "withGlobalTauri": true
+    },
+    "tauri": {
+        "bundle": {
+            "identifier": "charts"
+        },
+        "windows": [
+            {
+                "label": "main",
+                "title": "charts",
+                "visible": false
+            }
+        ]
+    }
+}
