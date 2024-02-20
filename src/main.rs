@@ -25,6 +25,7 @@ fn main() {
         .add_item(hide);
     let system_tray = SystemTray::new().with_menu(tray_menu);
     tauri::Builder::default()
+        /*
         .setup(|app| {
             tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".into()))
                 .decorations(false)
@@ -32,6 +33,7 @@ fn main() {
                 .build()?;
             Ok(())
         })
+*/
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
         .invoke_handler(tauri::generate_handler![close_splashscreen])
