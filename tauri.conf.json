@@ -19,7 +19,7 @@
             {
                 "label": "main",
                 "title": "charts",
-                "visible": true
+                "visible": false
             }
         ],
         "systemTray": {
