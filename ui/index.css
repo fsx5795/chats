@@ -2,15 +2,19 @@
     color: white;
     background-color: rgb(1, 1, 2);
 }
-body > div {
+body > span {
     background-color: rgb(1, 1, 2);
-    display: inline-block;
+    display: flex;
+    flex-direction: column;
     height: 100%;
 }
 #tools {
     width: 50px;
-    display: flex;
-    flex-direction: column;
+    background-color: blue;
+}
+#persons {
+    width: 100px;
+    background-color: red;
 }
 button {
     width: 30px;

@@ -7,6 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const { listen } = window.__TAURI__.event
     const unlisten = async() => {
         await listen('ipname', (event) => {
+            const persons = document.getElementById('persons')
+            const p = document.createElement('p')
+            p.innerText = event.payload.name
+            persons.appendChild(p)
             console.log(event.payload.ip)
             console.log(event.payload.name)
         })
