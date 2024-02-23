@@ -4,13 +4,14 @@ version = '0.0.0'
 edition = '2021'
 
 [build-dependencies]
-tauri-build = { version = '^1.5' , features = [] }
+tauri-build = { features = [] }
 
 [dependencies]
-tauri = { version = '^1.5' , features = [ "window-show", "window-hide", "window-close", "system-tray"] }
-serde = { version = '^1.0' }
-serde_json = { version = '^1.0' }
-rust-ini = { version = '^0.20' }
+tauri = { version = "*", features = ["system-tray", "window-close", "window-hide", "window-show"] }
+serde = "*"
+serde_json = "*"
+rust-ini = "*"
+sqlite = "*"
 
 [source.crates-io]
 replace-with = 'ustc'

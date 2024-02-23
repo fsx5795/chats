@@ -1,5 +1,5 @@
-const invoke = window.__TAURI__.invoke
 document.addEventListener('DOMContentLoaded', () => {
+    const invoke = window.__TAURI__.invoke
     const tauriWindow = window.__TAURI__.window
     console.log(tauriWindow.getAll())
     console.log(tauriWindow.getCurrent())
@@ -11,14 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const p = document.createElement('p')
             p.innerText = event.payload.name
             persons.appendChild(p)
+            p.onclick = () => {
+                invoke('get_chats_history', { ip: p.innerText })
+            }
             console.log(event.payload.ip)
-            console.log(event.payload.name)
         })
     }
     unlisten()
     invoke('get_user_name').then((name) => {
         const username = document.getElementById('username')
-        console.log(username)
         username.innerText = name
     })
 })

@@ -44,6 +44,27 @@ fn get_user_name() -> String {
     }
     String::new()
 }
+#[tauri::command]
+fn get_chats_history(ip: String) {
+    let mut dbfile = env::current_exe().unwrap();
+    dbfile.pop();
+    dbfile.push("chats.db");
+    let dbexists = dbfile.exists();
+    if dbexists {
+        std::fs::File::create(&dbfile).unwrap();
+    }
+    let connection = sqlite::open(dbfile.as_path()).unwrap();
+    let query = "CREATE TABLE IF NOT EXISTS chatshistory (name TEXT, chat VARCHAR(200))";
+    connection.execute(query).unwrap();
+    let query = format!("SELECT * FROM chatshistory WHERE name = '{}';", ip);
+    let query = query.as_str();
+    connection.iterate(query, |pairs| {
+        for &(name, value) in pairs.iter() {
+            println!("{}:{}", name, value.unwrap());
+        }
+        true
+    }).unwrap();
+}
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "关闭窗口");
     let hide = CustomMenuItem::new("hide".to_string(), "隐藏窗口");
@@ -64,7 +85,7 @@ fn main() {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, get_chats_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
