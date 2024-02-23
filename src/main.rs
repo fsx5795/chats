@@ -1,12 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use tauri::{Manager, CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem};
-use std::net::IpAddr;
 use std::net::UdpSocket;
 use std::thread;
 use std::env;
 use ini::Ini;
-#[derive(Clone, serde::Serialize)]
-struct Ipname {
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct JsonData {
+    types: String,
+    values: String,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct IpName {
     ip: String,
     name: String,
 }
@@ -50,7 +54,7 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
     tauri::Builder::default()
         .setup(|app| {
-            let mut apphanle = app.app_handle().clone();
+            let apphanle = app.app_handle().clone();
             thread::spawn(move || { init_socket(apphanle).unwrap() });
             tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".into()))
                 .decorations(false)
@@ -68,13 +72,27 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:9527")?;
     socket.set_broadcast(true)?;
     socket.set_multicast_loop_v4(true)?;
-    //&str转Vec<u8>
-    let data = get_user_name().into_bytes();
-    socket.send_to(&data, "255.255.255.255:8080")?;
+    let name = JsonData {
+        types: "name".to_string(),
+        values: get_user_name(),
+    };
+    let data = serde_json::to_string(&name).unwrap();
+    socket.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
     loop {
-        let mut buf = [0; 10];
+        let mut buf = [0; 1000];
         let (amt, addr) = socket.recv_from(&mut buf)?;
-        handle.emit_to("main", "ipname", Ipname { ip: addr.to_string(), name: String::from_utf8_lossy(&buf[..amt]).to_string() }).unwrap();
+        let jsonvalue = serde_json::from_str(&String::from_utf8_lossy(&buf[..amt]).to_string());
+        if jsonvalue.is_err() {
+            continue;
+        }
+        let jsonvalue = serde_json::from_value::<JsonData>(jsonvalue.unwrap());
+        if jsonvalue.is_err() {
+            continue;
+        }
+        let jsonvalue = jsonvalue.unwrap();
+        if jsonvalue.types == "name" {
+            handle.emit_to("main", "ipname", IpName{ ip: addr.to_string(), name: jsonvalue.values, }).unwrap();
+        }
     }
 }
 fn menu_handle(app_handle: &tauri::AppHandle, event: SystemTrayEvent) {

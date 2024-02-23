@@ -1,12 +1,19 @@
 * {
     color: white;
-    background-color: rgb(1, 1, 2);
+    margin: 0px;
 }
-body > span {
-    background-color: rgb(1, 1, 2);
+body {
     display: flex;
-    flex-direction: column;
-    height: 100%;
+    justify-content: flex-start;
+}
+body > div {
+    display: inline-block;
+    height: 100vh;
+}
+p {
+    height: 50px;
+    background-color: yellow;
+    opacity: 0.5;
 }
 #tools {
     width: 50px;

@@ -9,6 +9,7 @@ tauri-build = { version = '^1.5' , features = [] }
 [dependencies]
 tauri = { version = '^1.5' , features = [ "window-show", "window-hide", "window-close", "system-tray"] }
 serde = { version = '^1.0' }
+serde_json = { version = '^1.0' }
 rust-ini = { version = '^0.20' }
 
 [source.crates-io]
