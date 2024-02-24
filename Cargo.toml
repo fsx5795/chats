@@ -12,6 +12,7 @@ serde = "*"
 serde_json = "*"
 rust-ini = "*"
 sqlite = "*"
+once_cell = "*"
 
 [source.crates-io]
 replace-with = 'ustc'

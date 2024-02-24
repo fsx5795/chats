@@ -4,7 +4,6 @@
 }
 body {
     display: flex;
-    justify-content: flex-start;
 }
 body > div {
     display: inline-block;
@@ -15,10 +14,12 @@ p {
     background-color: yellow;
     opacity: 0.5;
 }
+/*最左侧的工具栏，包括用户头像会话按钮和联系人按钮*/
 #tools {
     width: 50px;
     background-color: blue;
 }
+/*左侧的联系人列表*/
 #persons {
     width: 100px;
     background-color: red;
@@ -26,4 +27,40 @@ p {
 button {
     width: 30px;
     height: 30px;
+}
+/*右侧聊天窗口*/
+#chats {
+    background-color: rgb(17, 17, 17);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+/*聊天窗口的会话界面*/
+#session {
+    height:70vh;
+    background-color: yellow;
+}
+/*聊天窗口的控制区域，内部包括文本输入框和发送按钮*/
+#control {
+    display: flex;
+    flex-direction: column;
+    align-items: end;
+    background-color: green;
+    flex: 1;
+}
+/*聊天窗口的文本输入框*/
+textarea {
+    /*width: calc(100% - border-width - padding);*/
+    border: none;
+    padding: 0px;
+    width: 100%;
+    height: 20vh;
+    display: block;
+    resize: none;
+}
+textarea:focus {
+    outline: none;
+}
+#send {
+    width: 50px;
 }

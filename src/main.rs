@@ -4,6 +4,7 @@ use std::net::UdpSocket;
 use std::thread;
 use std::env;
 use ini::Ini;
+use once_cell::sync::Lazy;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct JsonData {
     types: String,
@@ -13,6 +14,11 @@ struct JsonData {
 struct IpName {
     ip: String,
     name: String,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct SendMsg {
+    ip: String,
+    msg: String,
 }
 #[tauri::command]
 async fn close_splashscreen(window: tauri::Window) {
@@ -65,6 +71,20 @@ fn get_chats_history(ip: String) {
         true
     }).unwrap();
 }
+#[tauri::command]
+fn send_message(ip: String, message: String) {
+    let socket = UdpSocket::bind("0.0.0.0:9527").unwrap();
+    let msg = SendMsg {
+        ip: ip.clone(),
+        msg: message,
+    };
+    let send_data = JsonData {
+        types: "send".to_string(),
+        values: serde_json::to_string(&msg).unwrap(),
+    };
+    let data = serde_json::to_string(&send_data).unwrap();
+    socket.send_to(&data.into_bytes(), format!("{}:8080", ip)).unwrap();
+}
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "关闭窗口");
     let hide = CustomMenuItem::new("hide".to_string(), "隐藏窗口");
@@ -85,7 +105,7 @@ fn main() {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, get_chats_history])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, get_chats_history, send_message])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
