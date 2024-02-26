@@ -1,19 +1,37 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use tauri::{Manager, CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem};
+use std::fmt::Formatter;
 use std::net::UdpSocket;
 use std::thread;
 use std::env;
 use ini::Ini;
 use once_cell::sync::Lazy;
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct JsonData {
-    types: String,
-    values: String,
-}
+static SOCKET: Lazy<UdpSocket> = Lazy::new(|| {
+    UdpSocket::bind("0.0.0.0:9527").unwrap()
+});
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct IpName {
     ip: String,
     name: String,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum Values {
+    Msg(String),
+    ChatMsg(SendMsg),
+}
+impl Into<String> for Values {
+    fn into(self) -> String {
+        match self {
+            Values::Msg(msg) => msg,
+            _ => String::from("")
+        }
+    }
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct JsonData {
+    types: String,
+    values: Values,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct SendMsg {
@@ -73,17 +91,17 @@ fn get_chats_history(ip: String) {
 }
 #[tauri::command]
 fn send_message(ip: String, message: String) {
-    let socket = UdpSocket::bind("0.0.0.0:9527").unwrap();
-    let msg = SendMsg {
+    let sendmsg = SendMsg {
         ip: ip.clone(),
         msg: message,
     };
     let send_data = JsonData {
         types: "send".to_string(),
-        values: serde_json::to_string(&msg).unwrap(),
+        values: Values::ChatMsg(sendmsg),
     };
     let data = serde_json::to_string(&send_data).unwrap();
-    socket.send_to(&data.into_bytes(), format!("{}:8080", ip)).unwrap();
+    println!("{}", data);
+    SOCKET.send_to(&data.into_bytes(), format!("{}", ip)).unwrap();
 }
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "关闭窗口");
@@ -110,29 +128,40 @@ fn main() {
         .expect("error while running tauri application");
 }
 fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
-    let socket = UdpSocket::bind("0.0.0.0:9527")?;
-    socket.set_broadcast(true)?;
-    socket.set_multicast_loop_v4(true)?;
+    SOCKET.set_broadcast(true)?;
+    SOCKET.set_multicast_loop_v4(true)?;
     let name = JsonData {
         types: "name".to_string(),
-        values: get_user_name(),
+        values: Values::Msg(get_user_name()),
     };
     let data = serde_json::to_string(&name).unwrap();
-    socket.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
+    SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
     loop {
         let mut buf = [0; 1000];
-        let (amt, addr) = socket.recv_from(&mut buf)?;
+        let (amt, addr) = SOCKET.recv_from(&mut buf)?;
         let jsonvalue = serde_json::from_str(&String::from_utf8_lossy(&buf[..amt]).to_string());
         if jsonvalue.is_err() {
+            println!("json err:{}", jsonvalue.unwrap());
             continue;
         }
+        println!("{}", &String::from_utf8_lossy(&buf[..amt]).to_string());
         let jsonvalue = serde_json::from_value::<JsonData>(jsonvalue.unwrap());
         if jsonvalue.is_err() {
+            println!("JsonData err");
             continue;
         }
         let jsonvalue = jsonvalue.unwrap();
+        println!("{}", jsonvalue.types);
         if jsonvalue.types == "name" {
-            handle.emit_to("main", "ipname", IpName{ ip: addr.to_string(), name: jsonvalue.values, }).unwrap();
+            handle.emit_to("main", "ipname", IpName{ ip: addr.to_string(), name: jsonvalue.values.into(), }).unwrap();
+        } else if jsonvalue.types == "send" {
+            match jsonvalue.values {
+                Values::ChatMsg(chatmsg) => {
+                    chatmsg.ip.split(':');
+                    let _ = handle.emit_to("main", "chats", SendMsg{ ip: chatmsg.ip, msg: chatmsg.msg });
+                },
+                _ => ()
+            };
         }
     }
 }

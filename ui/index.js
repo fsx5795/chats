@@ -17,6 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 invoke('get_chats_history', { ip: p.innerText })
             }
         })
+        await listen('chats', event => {
+            console.log(event.payload.ip)
+            console.log(event.payload.msg)
+        })
     }
     unlisten()
     invoke('get_user_name').then(name => {
@@ -26,8 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const send = document.getElementById('send')
     send.addEventListener('click', () => {
         const textarea = document.getElementById('inputext')
-        invoke('send_message', { ip: curIp, message: textarea.innerText })
-        console.log(curIp)
-        console.log(textarea.innerText)
+        invoke('send_message', { ip: curIp, message: textarea.value })
     })
 })
