@@ -2,6 +2,7 @@
 use tauri::{Manager, CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem};
 use std::fmt::Formatter;
 use std::net::UdpSocket;
+use std::str::FromStr;
 use std::thread;
 use std::env;
 use ini::Ini;
@@ -91,16 +92,18 @@ fn get_chats_history(ip: String) {
 }
 #[tauri::command]
 fn send_message(ip: String, message: String) {
+    /*
     let sendmsg = SendMsg {
         ip: ip.clone(),
         msg: message,
     };
+    */
     let send_data = JsonData {
-        types: "send".to_string(),
-        values: Values::ChatMsg(sendmsg),
+        types: "chat".to_string(),
+        //values: Values::ChatMsg(sendmsg),
+        values: Values::Msg(message),
     };
     let data = serde_json::to_string(&send_data).unwrap();
-    println!("{}", data);
     SOCKET.send_to(&data.into_bytes(), format!("{}", ip)).unwrap();
 }
 fn main() {
@@ -135,6 +138,7 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         values: Values::Msg(get_user_name()),
     };
     let data = serde_json::to_string(&name).unwrap();
+    //SOCKET.send_to(&data.into_bytes(), "255.255.255.255:9527")?;
     SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
     loop {
         let mut buf = [0; 1000];
@@ -144,7 +148,6 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
             println!("json err:{}", jsonvalue.unwrap());
             continue;
         }
-        println!("{}", &String::from_utf8_lossy(&buf[..amt]).to_string());
         let jsonvalue = serde_json::from_value::<JsonData>(jsonvalue.unwrap());
         if jsonvalue.is_err() {
             println!("JsonData err");
@@ -154,11 +157,20 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         println!("{}", jsonvalue.types);
         if jsonvalue.types == "name" {
             handle.emit_to("main", "ipname", IpName{ ip: addr.to_string(), name: jsonvalue.values.into(), }).unwrap();
-        } else if jsonvalue.types == "send" {
+        } else if jsonvalue.types == "chat" {
             match jsonvalue.values {
+                /*
                 Values::ChatMsg(chatmsg) => {
-                    chatmsg.ip.split(':');
-                    let _ = handle.emit_to("main", "chats", SendMsg{ ip: chatmsg.ip, msg: chatmsg.msg });
+                    let pos = chatmsg.ip.find(':').unwrap();
+                    let ipStr = &chatmsg.ip[..pos];
+                    let _ = handle.emit_to("main", "chats", SendMsg{ ip: ipStr.to_string(), msg: chatmsg.msg });
+                },
+                */
+                Values::Msg(chatmsg) => {
+                    let ipStr = addr.to_string();
+                    let pos = ipStr.find(':').unwrap();
+                    let ipStr = &ipStr[..pos];
+                    let _ = handle.emit_to("main", "chats", SendMsg{ ip: ipStr.to_string(), msg: chatmsg });
                 },
                 _ => ()
             };

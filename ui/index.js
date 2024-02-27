@@ -18,8 +18,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
         await listen('chats', event => {
-            console.log(event.payload.ip)
-            console.log(event.payload.msg)
+            const session = document.getElementById('session')
+            const leftchat = document.createElement('left-chat')
+            const style = document.createElement('style')
+            style.innerHTML = `
+                left-chat {
+                    --align-item: start;
+                }
+            `
+            leftchat.appendChild(style)
+            session.appendChild(leftchat)
+            const msg = {
+                head: event.payload.ip,
+                value: event.payload.msg
+            }
+            leftchat.setAttribute('message', JSON.stringify(msg))
         })
     }
     unlisten()
@@ -31,5 +44,20 @@ document.addEventListener('DOMContentLoaded', () => {
     send.addEventListener('click', () => {
         const textarea = document.getElementById('inputext')
         invoke('send_message', { ip: curIp, message: textarea.value })
+        const session = document.getElementById('session')
+        const leftchat = document.createElement('left-chat')
+        const style = document.createElement('style')
+        style.innerHTML = `
+            left-chat {
+                --align-item: end;
+            }
+        `
+        leftchat.appendChild(style)
+        session.appendChild(leftchat)
+        const msg = {
+            head: "",
+            value: textarea.value
+        }
+        leftchat.setAttribute('message', JSON.stringify(msg))
     })
 })
