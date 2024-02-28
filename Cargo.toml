@@ -13,6 +13,8 @@ serde_json = "*"
 rust-ini = "*"
 sqlite = "*"
 once_cell = "*"
+uuid = "*"
+chrono = "*"
 
 [source.crates-io]
 replace-with = 'ustc'

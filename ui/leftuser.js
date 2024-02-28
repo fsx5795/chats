@@ -2,7 +2,6 @@ class Chat extends HTMLElement {
     constructor() {
         super()
         const shadow = this.attachShadow({mode: 'open'})
-        //const tp = document.querySelector('template')
         const wc = document.getElementById('wc')
         const tp = wc.content.cloneNode(true)
         shadow.appendChild(tp)
@@ -11,17 +10,27 @@ class Chat extends HTMLElement {
         return ['message', 'align']
     }
     attributeChangedCallback(name, oldVal, newVal) {
-        if (name == 'message') {
-            if (newVal) {
-                const msg = JSON.parse(newVal)
-                this.shadowRoot.querySelector('span').innerText = msg.head
-                this.shadowRoot.querySelector('p').innerText = msg.value
-            }
-        } else if (name == 'align') {
-            if (newVal == 'right') {
-                const div = document.querySelector('div')
-                div.alignItems = end
-            }
+        switch (name) {
+            case 'message':
+                if (newVal) {
+                    const msg = JSON.parse(newVal)
+                    this.shadowRoot.querySelector('span').innerText = msg.head
+                    this.shadowRoot.querySelector('p').innerText = msg.value
+                }
+                break
+            case 'align':
+                const div = this.shadowRoot.querySelector('div')
+                switch (newVal) {
+                    case 'left':
+                        div.style.alignItems = 'start'
+                        break;
+                    case 'right':
+                        div.style.alignItems = 'end'
+                        break;
+                }
+                break
+            default:
+                break
         }
     }
 }
