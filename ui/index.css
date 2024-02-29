@@ -1,9 +1,14 @@
 * {
     color: white;
+    background-color: rgb(48, 48, 48);
     margin: 0px;
+}
+*:focus {
+    outline: none;
 }
 body {
     display: flex;
+    background-color: rgb(32, 32, 32);
 }
 body > div {
     display: inline-block;
@@ -30,11 +35,13 @@ p {
     width: 100px;
     background-color: rgb(27, 27, 27);
 }
+/*
 #tools > button {
     width: 30px;
     height: 30px;
     margin: 10px auto;
 }
+*/
 /*右侧聊天窗口*/
 #chats {
     background-color: rgb(17, 17, 17);
@@ -62,12 +69,31 @@ textarea {
     display: block;
     resize: none;
     box-sizing: border-box;
-    color: black;
+    color: white;
     background-color: rgb(17, 17, 17);
-}
-textarea:focus {
-    outline: none;
 }
 #send {
     width: 50px;
+}
+dialog {
+    top: 10px;
+    left: 10px;
+    width: 150px;
+    height: 200px;
+    padding: 0;
+    border: none;
+    border-radius: 10px;
+    background-color: rgb(48, 48, 48);
+}
+dialog > div {
+    height: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+}
+input {
+    width: 100px;
 }

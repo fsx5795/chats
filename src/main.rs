@@ -29,12 +29,17 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     conf.write_to_file(inifile).unwrap();
     id
 });
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct UserInfo {
+    ip: String,
+    name: String,
+}
 static mut USERS: once_cell::sync::Lazy<HashMap<String, UserInfo>> = once_cell::sync::Lazy::new(|| {
     HashMap::new()
 });
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct UserInfo {
-    ip: String,
+struct ChatUser {
+    id: String,
     name: String,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -45,12 +50,14 @@ struct JsonData {
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct SendMsg {
+    id: String,
     ip: String,
     msg: String,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Chatstory {
     iself: bool,
+    name: String,
     msg: String,
 }
 #[tauri::command]
@@ -73,6 +80,11 @@ fn get_user_name() -> String {
     inifile.push("conf.ini");
     if inifile.exists() {
         let i = Ini::load_from_file(inifile).unwrap();
+        let section = i.section(Some("User").to_owned()).unwrap();
+        if let Some(value) = section.get("name") {
+            return value.to_string();
+        }
+        /*
         for (_, prop) in i.iter() {
             for (k, v) in prop.iter() {
                 if k == "name" {
@@ -80,14 +92,39 @@ fn get_user_name() -> String {
                 }
             }
         }
+        */
     }
     String::new()
 }
 #[tauri::command]
-fn get_chats_history(ip: String, handle: tauri::AppHandle) {
+fn set_user_name(name: String) {
+    let mut inifile = env::current_exe().unwrap();
+    inifile.pop();
+    inifile.push("conf.ini");
+    let mut conf = Ini::load_from_file(&inifile).unwrap();
+    let section = conf.section_mut(Some("User").to_owned()).unwrap();
+    section.insert("name".to_owned(), name.to_owned());
+    conf.write_to_file(inifile).unwrap();
+    let sendmsg = JsonData {
+        id: UUID.to_string(),
+        types: "name".to_string(),
+        values: name,
+    };
+    let data = serde_json::to_string(&sendmsg).unwrap();
+    SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080").unwrap();
+}
+#[tauri::command]
+fn get_chats_history(id: String, handle: tauri::AppHandle) {
     unsafe {
+        let mut curname = String::new();
         for (k, v) in USERS.iter() {
-            if v.ip == ip {
+            if *k == id {
+                curname = v.name.clone();
+                break;
+            }
+        }
+        for (k, _) in USERS.iter() {
+            if k.to_string() == id {
                 let connection = get_db_connection();
                 let query = format!("SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';", k, k);
                 let query = query.as_str();
@@ -100,9 +137,8 @@ fn get_chats_history(ip: String, handle: tauri::AppHandle) {
                         } else if name == "chatmsg" {
                             msg = value.unwrap().to_string();
                         }
-                        println!("{}:{}", name, value.unwrap());
                     }
-                    handle.emit_to("main", "chatstory", Chatstory{ iself: iself, msg: msg.to_string() }).unwrap();
+                    handle.emit_to("main", "chatstory", Chatstory{ iself: iself, name: curname.clone(), msg: msg.to_string() }).unwrap();
                     true
                 }).unwrap();
                 break;
@@ -150,7 +186,7 @@ fn main() {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, get_chats_history, send_message])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, set_user_name, get_chats_history, send_message])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -176,7 +212,6 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         values: get_user_name(),
     };
     let data = serde_json::to_string(&name).unwrap();
-    //SOCKET.send_to(&data.into_bytes(), "255.255.255.255:9527")?;
     SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
     loop {
         let mut buf = [0; 1000];
@@ -193,8 +228,9 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         }
         let jsonvalue = jsonvalue.unwrap();
         println!("{}", jsonvalue.types);
+        //联系人上线
         if jsonvalue.types == "name" {
-            handle.emit_to("main", "ipname", UserInfo{ ip: addr.to_string(), name: jsonvalue.values.clone(), }).unwrap();
+            handle.emit_to("main", "ipname", ChatUser{ id: jsonvalue.id.clone(), name: jsonvalue.values.clone(), }).unwrap();
             let us = UserInfo {
                 ip: addr.to_string(),
                 name: jsonvalue.values,
@@ -206,7 +242,20 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
             let ipstr = addr.to_string();
             let pos = ipstr.find(':').unwrap();
             let ipstr = &ipstr[..pos];
-            handle.emit_to("main", "chats", SendMsg{ ip: ipstr.to_string(), msg: jsonvalue.values.clone() }).unwrap();
+            unsafe {
+                for (k, v) in USERS.iter() {
+                    if *k == jsonvalue.id {
+                        if v.ip != ipstr.to_string() {
+                            let us = UserInfo {
+                                ip: ipstr.to_string(),
+                                name: v.name.clone(),
+                            };
+                            USERS.insert(jsonvalue.id.clone(), us);
+                        }
+                    }
+                }
+            }
+            handle.emit_to("main", "chats", SendMsg{ id: jsonvalue.id.clone(), ip: ipstr.to_string(), msg: jsonvalue.values.clone() }).unwrap();
             let connection = get_db_connection();
             let now: DateTime<Local> = chrono::Local::now();
             let datetime = now.format("%Y-%m-%d %H:%M:%S");

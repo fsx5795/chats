@@ -5,9 +5,9 @@
         <link rel="stylesheet" href="index.css"/>
         <!--<link rel="import" href="leftuser.html"/>-->
         <script src="index.js" charset="utf-8"></script>
-        <script src="leftuser.js" charset="utf-8"></script>
+        <script src="chatsession.js" charset="utf-8"></script>
         <template id="wc">
-            <link rel="stylesheet" href="leftuser.css"/>
+            <link rel="stylesheet" href="chatsession.css"/>
             <div id="chat">
                 <span></span>
                 <p></p>
@@ -15,13 +15,18 @@
         </template>
     </head>
     <body>
-        <dialog>
-            <form method="dialog"></form>
+        <dialog closeByMask>
+            <div>
+                <input type="text"/>
+                <button id="adminBtn">确定</button>
+            </div>
         </dialog>
         <div id="tools">
             <p id="admin"></p>
+            <!--
             <button></button>
             <button></button>
+            -->
         </div>
         <div id="persons"></div>
         <div id="chats">

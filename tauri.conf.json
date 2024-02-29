@@ -19,6 +19,8 @@
             {
                 "label": "main",
                 "title": "charts",
+                "minWidth": 800,
+                "minHeight": 600,
                 "visible": false
             }
         ],

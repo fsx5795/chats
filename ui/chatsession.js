@@ -34,4 +34,4 @@ class Chat extends HTMLElement {
         }
     }
 }
-customElements.define('left-chat', Chat)
+customElements.define('chat-session', Chat)
