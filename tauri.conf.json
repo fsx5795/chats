@@ -21,6 +21,8 @@
                 "title": "charts",
                 "minWidth": 800,
                 "minHeight": 600,
+                "theme": "Dark",
+                "alwaysOnTop": true,
                 "visible": false
             }
         ],

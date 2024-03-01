@@ -19,13 +19,13 @@ class Chat extends HTMLElement {
                 }
                 break
             case 'align':
-                const div = this.shadowRoot.querySelector('div')
+                const chat = this.shadowRoot.getElementById('chat')
                 switch (newVal) {
                     case 'left':
-                        div.style.alignItems = 'start'
+                        chat.style.flexDirection = 'row'
                         break;
                     case 'right':
-                        div.style.alignItems = 'end'
+                        chat.style.flexDirection = 'row-reverse'
                         break;
                 }
                 break

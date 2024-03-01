@@ -1,9 +1,26 @@
-div {
+#chat {
+    display: flex;
+    padding: 5%;
+    flex-direction: row-reverse;
+    border: none;
+    align-items: start;
+}
+#chat > div {
     display: flex;
     flex-direction: column;
-    border: 1px solid black;
-    align-items: end;
+    align-items: start;
+}
+img {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background-color: rgb(36, 37, 40);
 }
 p {
+    padding: 5px;
+    text-align: left;
+    border-radius: 5px;
     background-color: rgb(38, 38, 38);
 }

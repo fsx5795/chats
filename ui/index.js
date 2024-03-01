@@ -11,9 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const persons = document.getElementById('persons')
             let isSame = false
             persons.querySelectorAll('p').forEach(p => {
-                if (p.getAttribute('userId') == event.payload.id) {
+                if (p.getAttribute('userId') === event.payload.id) {
                     isSame = true
-                    return
                 }
             })
             if (isSame) return
@@ -22,7 +21,11 @@ document.addEventListener('DOMContentLoaded', () => {
             p.innerText = event.payload.name
             persons.appendChild(p)
             p.onclick = () => {
+                persons.querySelectorAll('p').forEach(p => {
+                    p.style.backgroundColor = 'rgb(27, 27, 27)'
+                })
                 if (curId !== event.payload.id) {
+                    p.style.backgroundColor = 'rgb(64, 66, 73)'
                     const session = document.getElementById('session')
                     session.querySelectorAll('chat-session').forEach(chat => {
                         session.removeChild(chat)
@@ -37,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
             const msg = {
-                head: event.payload.ip,
+                head: event.payload.name,
                 value: event.payload.msg
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
@@ -48,8 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
             event.payload.id
+            const head = document.getElementById('head')
             const msg = {
-                head: event.payload.name,
+                head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
                 value: event.payload.msg
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
@@ -62,15 +66,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     unlisten()
     invoke('get_user_name').then(name => {
-        const username = document.getElementById('admin')
-        username.innerText = name
+        const head = document.getElementById('head')
+        head.setAttribute('name', name)
     })
-    const admin = document.getElementById('admin')
+    const head = document.getElementById('head')
     const dialog = document.querySelector('dialog')
-    admin.addEventListener('click', () => {
-        const username = document.getElementById('admin')
+    head.addEventListener('click', () => {
         const input = dialog.querySelector('input')
-        input.value = username.innerText
+        input.value = head.getAttribute('name')
+        const img = dialog.querySelector('img')
+        img.addEventListener('click', () => {
+            const input = document.createElement('input')
+            input.type = 'file'
+            input.click()
+            input.onchange = e => {
+                const file = e.target.files[0]
+                console.log(file)
+            }
+        })
+        const adminBtn = dialog.querySelector('button')
+        adminBtn.addEventListener('click', () => {
+            const input = document.querySelector('input')
+            invoke('set_user_name', { name: input.value })
+            dialog.close()
+        })
         dialog.showModal()
     })
     //点击对话框以外的区域关闭对话框
@@ -78,11 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
         dialog.onclick = event => {
             if (event.target.tagName.toLowerCase() === 'dialog') dialog.close()
         }
-    })
-    const adminBtn = document.getElementById('adminBtn')
-    adminBtn.addEventListener('click', () => {
-        const input = document.querySelector('input')
-        invoke('set_user_name', { name: input.value })
     })
     const send = document.getElementById('send')
     send.addEventListener('click', () => {
@@ -94,16 +108,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const hour = date.getHours().toString().padStart(2, '0')
         const minute = date.getMinutes().toString().padStart(2, '0')
         const second = date.getSeconds().toString().padStart(2, '0')
-        invoke('send_message', { ip: curIp, datetime: `${year}-${month}-${day} ${hour}:${minute}:${second}`, message: textarea.value })
+        invoke('send_message', { id: curId, datetime: `${year}-${month}-${day} ${hour}:${minute}:${second}`, message: textarea.value })
         const session = document.getElementById('session')
         const chatsession = document.createElement('chat-session')
         session.appendChild(chatsession)
-        const username = document.getElementById('admin')
+        const head = document.getElementById('head')
         const msg = {
-            head: username.innerText,
+            head: head.getAttribute('name'),
             value: textarea.value
         }
         chatsession.setAttribute('message', JSON.stringify(msg))
         chatsession.setAttribute('align', 'right')
     })
 })
+window.addEventListener('contextmenu', event => event.preventDefault())

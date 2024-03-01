@@ -3,6 +3,9 @@
     background-color: rgb(48, 48, 48);
     margin: 0px;
 }
+html {
+    background-color: rgb(32, 32, 32);
+}
 *:focus {
     outline: none;
 }
@@ -14,9 +17,26 @@ body > div {
     display: inline-block;
     height: 100vh;
 }
-p {
-    height: 50px;
-    opacity: 0.5;
+/*定义滚动条高宽及背景 高宽分别对应横竖滚动条的尺寸*/
+::-webkit-scrollbar
+{
+    width: 16px;
+    height: 16px;
+    background-color: rgb(17, 17, 17);
+}
+/*定义滚动条轨道 内阴影+圆角*/
+::-webkit-scrollbar-track
+{
+    -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3);
+    border-radius: 10px;
+    background-color: rgb(17, 17, 17);
+}
+/*定义滑块 内阴影+圆角*/
+::-webkit-scrollbar-thumb
+{
+  border-radius: 10px;
+  -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,.3);
+  background-color: rgb(59, 59, 59);
 }
 /*最左侧的工具栏，包括用户头像会话按钮和联系人按钮*/
 #tools {
@@ -24,15 +44,26 @@ p {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
+    align-items: center;
+    background-color: rgb(36, 37, 40);
+}
+img {
+    width: 35px;
+    height: 35px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
     background-color: rgb(36, 37, 40);
 }
 #admin {
+    text-align: center;
     color: darkgray;
     background-color: rgb(40, 44, 52);
 }
 /*左侧的联系人列表*/
 #persons {
     width: 100px;
+    overflow-y: auto;
     background-color: rgb(27, 27, 27);
 }
 /*
@@ -52,28 +83,37 @@ p {
 /*聊天窗口的会话界面*/
 #session {
     height:70vh;
+    overflow-y: auto;
     background-color: rgb(17, 17, 17);
 }
 /*聊天窗口的控制区域，内部包括文本输入框和发送按钮*/
 #control {
+    padding: 0 3% 2% 3%;
     display: flex;
     flex-direction: column;
     align-items: end;
     background-color: rgb(17, 17, 17);
+    justify-content: space-around;
     flex: 1;
 }
 /*聊天窗口的文本输入框*/
 textarea {
     width: 100%;
-    height: 20vh;
+    height: 18vh;
     display: block;
     resize: none;
+    border: none;
+    border-radius: 5px;
     box-sizing: border-box;
     color: white;
-    background-color: rgb(17, 17, 17);
+    background-color: rgb(27, 27, 27);
 }
 #send {
-    width: 50px;
+    width: 80px;
+    height: 30px;
+    border: none;
+    border-radius: 3px;
+    background-color: rgb(88, 101, 242);
 }
 dialog {
     top: 10px;
@@ -96,4 +136,15 @@ dialog > div {
 }
 input {
     width: 100px;
+    padding: 3px;
+    border: none;
+    border-radius: 3px;
+    background-color: rgb(56, 58, 64);
+}
+dialog button {
+    width: 80px;
+    height: 30px;
+    border: none;
+    border-radius: 3px;
+    background-color: rgb(88, 101, 242);
 }
