@@ -70,6 +70,9 @@ async fn close_splashscreen(window: tauri::Window) {
         window.get_window("main").expect("no window labeled 'main' found").show().unwrap();
     }
     window.get_window("main").unwrap().set_always_on_top(false).unwrap();
+    if cfg!(debug_assertions) {
+        window.get_window("main").unwrap().open_devtools();
+    }
     /*
     std::thread::sleep(std::time::Duration::from_micros(500_000));
     let handle = window.app_handle();
