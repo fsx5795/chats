@@ -2,14 +2,14 @@ class Chat extends HTMLElement {
     constructor() {
         super()
         const shadow = this.attachShadow({mode: 'open'})
-        const wc = document.getElementById('wc')
+        const wc = document.getElementById('wchat')
         const tp = wc.content.cloneNode(true)
         shadow.appendChild(tp)
     }
     static get observedAttributes() {
         return ['message', 'align']
     }
-    attributeChangedCallback(name, oldVal, newVal) {
+    attributeChangedCallback(name, _oldVal, newVal) {
         switch (name) {
             case 'message':
                 if (newVal) {

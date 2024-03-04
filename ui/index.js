@@ -1,31 +1,39 @@
-const invoke = window.__TAURI__.invoke
 let curId
 document.addEventListener('DOMContentLoaded', () => {
+    const { invoke } = window.__TAURI__.tauri
+    /*
     const tauriWindow = window.__TAURI__.window
     console.log(tauriWindow.getAll())
     console.log(tauriWindow.getCurrent())
+    */
     invoke('close_splashscreen')
     const { listen } = window.__TAURI__.event
     const unlisten = async() => {
         await listen('ipname', event => {
-            const persons = document.getElementById('persons')
             let isSame = false
-            persons.querySelectorAll('p').forEach(p => {
+            const persons = document.getElementById('persons')
+            const msg = {
+                value: event.payload.name
+            }
+            persons.querySelectorAll('chat-persons').forEach(p => {
+                console.log(p.getAttribute('userId'))
+                console.log(event.payload.id)
                 if (p.getAttribute('userId') === event.payload.id) {
                     isSame = true
+                    p.setAttribute('name', JSON.stringify(msg))
                 }
             })
             if (isSame) return
-            const p = document.createElement('p')
-            p.setAttribute('userId', event.payload.id)
-            p.innerText = event.payload.name
-            persons.appendChild(p)
-            p.onclick = () => {
-                persons.querySelectorAll('p').forEach(p => {
-                    p.style.backgroundColor = 'rgb(27, 27, 27)'
+            const chatperson = document.createElement('chat-persons')
+            persons.appendChild(chatperson)
+            chatperson.setAttribute('userId', event.payload.id)
+            chatperson.setAttribute('name', JSON.stringify(msg))
+            chatperson.onclick = () => {
+                persons.querySelectorAll('chat-persons').forEach(p => {
+                    p.setAttribute('bgcolor', 'nomal')
                 })
                 if (curId !== event.payload.id) {
-                    p.style.backgroundColor = 'rgb(64, 66, 73)'
+                    chatperson.setAttribute('bgcolor', 'pressed')
                     const session = document.getElementById('session')
                     session.querySelectorAll('chat-session').forEach(chat => {
                         session.removeChild(chat)
@@ -50,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const session = document.getElementById('session')
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
-            event.payload.id
+            //event.payload.id
             const head = document.getElementById('head')
             const msg = {
                 head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
@@ -63,6 +71,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 leftchat.setAttribute('align', 'left')
             }
         })
+        await listen('userhead', event => {
+            const leftchat = document.createElement('chat-persons')
+            session.appendChild(leftchat)
+            const msg = {
+                value: event.payload.path
+            }
+            leftchat.setAttribute('head', JSON.stringify(msg))
+        })
     }
     unlisten()
     invoke('get_user_name').then(name => {
@@ -71,23 +87,39 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     const head = document.getElementById('head')
     const dialog = document.querySelector('dialog')
-    head.addEventListener('click', () => {
-        const input = dialog.querySelector('input')
-        input.value = head.getAttribute('name')
-        const img = dialog.querySelector('img')
-        img.addEventListener('click', () => {
-            const input = document.createElement('input')
-            input.type = 'file'
-            input.click()
-            input.onchange = e => {
-                const file = e.target.files[0]
-                console.log(file)
-            }
+    const input = dialog.querySelector('input')
+    const img = dialog.querySelector('img')
+    let imgPath;
+    img.addEventListener('click', async () => {
+        const { readBinaryFile } = window.__TAURI__.fs
+        const { open } = window.__TAURI__.dialog
+        imgPath = await open({
+            multiple: false,
+            filters: [{
+                name: 'Image',
+                extensions: ['png', 'jpg']
+            }]
         })
+        if (Array.isArray(imgPath)) {
+        } else if (imgPath === null) {
+        } else {
+            const contents = await readBinaryFile(imgPath)
+            const blob = new Blob([contents])
+            const img = dialog.querySelector('img')
+            const src = URL.createObjectURL(blob)
+            img.src = src
+        }
+    })
+    //管理员信息设置对话框点击头像选择更改的头像文件
+    head.addEventListener('click', () => {
+        input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
         adminBtn.addEventListener('click', () => {
+            const head = document.getElementById('head')
+            const img = dialog.querySelector('img')
+            head.src = img.src
             const input = document.querySelector('input')
-            invoke('set_user_name', { name: input.value })
+            invoke('set_user_info', { name: input.value, img: imgPath })
             dialog.close()
         })
         dialog.showModal()
