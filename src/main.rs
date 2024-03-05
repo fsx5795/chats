@@ -2,7 +2,7 @@
 use uuid::Uuid;
 use sqlite;
 use tauri::Manager;
-use std::{collections::HashMap, env, fs, io::{Read, Write}, net::UdpSocket, path::PathBuf, thread};
+use std::{collections::HashMap, env, fs, io::{Read, Write}, net::{SocketAddr, UdpSocket}, path::PathBuf, thread};
 use ini::Ini;
 use once_cell;
 use chrono::{self, DateTime, Local};
@@ -15,7 +15,7 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     inifile.push("conf.ini");
     if inifile.exists() {
         let i = Ini::load_from_file(&inifile).unwrap();
-        for (_, prop) in i.iter() {
+        for (_, prop) in &i {
             for (k, v) in prop.iter() {
                 if k == "id" {
                     return Uuid::parse_str(v).unwrap();
@@ -29,12 +29,8 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     conf.write_to_file(inifile).unwrap();
     id
 });
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct UserInfo {
-    ip: String,
-    name: String,
-}
-static mut USERS: once_cell::sync::Lazy<HashMap<String, UserInfo>> = once_cell::sync::Lazy::new(|| {
+//好友信息<id, (ip, name)>
+static mut USERS: once_cell::sync::Lazy<HashMap<String, (String, String)>> = once_cell::sync::Lazy::new(|| {
     HashMap::new()
 });
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -42,17 +38,11 @@ struct ChatUser {
     id: String,
     name: String,
 }
-//UDP头像数据
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct HeadImg {
-    name: String,
-    contents: Vec<u8>,
-}
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 enum Values {
     Value(String),
-    HeadImg(HeadImg),
+    HeadImg{ name: String, contents: Vec<u8> },
 }
 //UDP数据
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -60,6 +50,75 @@ struct JsonData {
     id: String,
     types: String,
     values: Values,
+}
+impl JsonData {
+    fn new(id: String, types: String, values: Values) -> JsonData {
+        JsonData {
+            id,
+            types,
+            values
+        }
+    }
+    fn anaslysis(&self, ipstr: &str, addr: &SocketAddr, handle: &tauri::AppHandle) -> () {
+        match self.types.as_str() {
+            //联系人上线或修改用户名
+            "name" => {
+                if let Values::Value(strval) = &self.values {
+                    handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), }).unwrap();
+                    unsafe {
+                        USERS.insert(self.id.clone(), (addr.to_string(), strval.clone()));
+                    }
+                };
+            }
+            "headimg" => {
+                unsafe {
+                    for (k, v) in USERS.iter() {
+                        if k.to_string() == self.id {
+                            if v.0 != ipstr.to_string() {
+                                USERS.insert(self.id.clone(), (ipstr.to_string(), v.1.clone()));
+                            }
+                        }
+                    }
+                }
+                if let Values::HeadImg{name, contents} = &self.values {
+                    let mut curpath = env::current_exe().unwrap();
+                    curpath.pop();
+                    curpath.push(name);
+                    let mut file = fs::File::open(&curpath).unwrap();
+                    file.write_all(&contents).unwrap();
+                    handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() }).unwrap();
+                }
+            }
+            "chat" => {
+                let mut name = String::new();
+                unsafe {
+                    for (k, v) in USERS.iter() {
+                        if *k == self.id {
+                            if v.0 != ipstr.to_string() {
+                                USERS.insert(self.id.clone(), (ipstr.to_string(), v.1.clone()));
+                            }
+                            name = v.1.clone();
+                        }
+                    }
+                }
+                if let Values::Value(strval) = &self.values {
+                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), ip: ipstr.to_string(), name, msg: strval.clone() }).unwrap();
+                    let connection = match get_db_connection() {
+                        Ok(connect) => connect,
+                        Err(errstr) => {
+                            handle.emit_to("main", "error", errstr).unwrap();
+                            return
+                        }
+                    };
+                    let now: DateTime<Local> = chrono::Local::now();
+                    let datetime = now.format("%Y-%m-%d %H:%M:%S");
+                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_string(), datetime, strval);
+                    connection.execute(query).unwrap();
+                };
+            }
+            _ => {}
+        }
+    }
 }
 //发送给界面的用户头像更改文件
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -82,7 +141,7 @@ struct Chatstory {
     msg: String,
 }
 #[tauri::command]
-async fn close_splashscreen(window: tauri::Window) {
+async fn close_splashscreen(window: tauri::Window) -> () {
     //std::thread::sleep(std::time::Duration::from_micros(500_000));
     std::thread::sleep(std::time::Duration::from_secs(1));
     if let Some(splashscreen) = window.get_window("splashscreen") {
@@ -100,7 +159,7 @@ async fn close_splashscreen(window: tauri::Window) {
     */
 }
 #[tauri::command]
-fn get_user_name() -> String {
+fn get_admin_name() -> String {
     let mut inifile = env::current_exe().unwrap();
     inifile.pop();
     inifile.push("conf.ini");
@@ -123,7 +182,7 @@ fn get_user_name() -> String {
     String::new()
 }
 #[tauri::command]
-fn set_user_info(name: String, img: String) {
+fn set_user_info(name: String, img: String) -> () {
     let mut curpath = env::current_exe().unwrap();
     curpath.pop();
     let mut inifile = curpath.clone();
@@ -132,56 +191,41 @@ fn set_user_info(name: String, img: String) {
     let section = conf.section_mut(Some("User").to_owned()).unwrap();
     section.insert("name".to_owned(), name.to_owned());
     conf.write_to_file(inifile).unwrap();
-    let sendmsg = JsonData {
-        id: UUID.to_string(),
-        types: "name".to_string(),
-        values: Values::Value(name),
-    };
+    let sendmsg = JsonData::new(UUID.to_string(), "name".to_string(), Values::Value(name));
     let data = serde_json::to_string(&sendmsg).unwrap();
-    if cfg!(debug_assertions) {
-        SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080").unwrap();
-    } else {
-        SOCKET.send_to(&data.into_bytes(), "255.255.255.255:9527").unwrap();
-    }
+    SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
     if !img.is_empty() {
         let mut imgfile = curpath;
         let imgsour = PathBuf::from(img);
         imgfile.push(imgsour.file_name().unwrap());
-        fs::copy(imgsour.clone(), imgfile.clone()).unwrap();
+        fs::copy(&imgsour, &imgfile).unwrap();
         let mut file = fs::File::open(imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
-        let headimg = HeadImg {
-            name: imgsour.file_name().unwrap().to_string_lossy().to_string(),
-            //contents: String::from_utf8(filedata).unwrap(),
-            contents: filedata,
-        };
-        let sendmsg = JsonData {
-            id: UUID.to_string(),
-            types: "headimg".to_string(),
-            values: Values::HeadImg(headimg),
-        };
+        let sendmsg = JsonData::new(UUID.to_string(), "headimg".to_string(), Values::HeadImg{ name: imgsour.file_name().unwrap().to_string_lossy().to_string(), contents: filedata });
         let data = serde_json::to_string(&sendmsg).unwrap();
-        if cfg!(debug_assertions) {
-            SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080").unwrap();
-        } else {
-            SOCKET.send_to(&data.into_bytes(), "255.255.255.255:9527").unwrap();
-        }
+        SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
     }
 }
 #[tauri::command]
-fn get_chats_history(id: String, handle: tauri::AppHandle) {
+fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
     unsafe {
         for (k, v) in USERS.iter() {
             if k.to_string() == id {
-                let curname = v.name.clone();
-                let connection = get_db_connection();
+                let curname = &v.1;
+                let connection = match get_db_connection() {
+                    Ok(connect) => connect,
+                    Err(errstr) => {
+                        handle.emit_to("main", "error", errstr).unwrap();
+                        return
+                    },
+                };
                 let query = format!("SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';", k, k);
                 let query = query.as_str();
                 connection.iterate(query, |pairs| {
                     let mut iself = false;
                     let mut msg = String::new();
-                    for &(name, value) in pairs.iter() {
+                    for &(name, value) in pairs {
                         if name == "uuid" {
                             iself = value.unwrap() == UUID.to_string();
                         } else if name == "chatmsg" {
@@ -195,20 +239,23 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) {
             }
         }
     }
+    //handle.emit_to("main", "error", "错误错误错误!".to_string()).unwrap();
 }
 #[tauri::command]
-fn send_message(id: String, datetime: String, message: String) {
-    let send_data = JsonData {
-        id: UUID.to_string(),
-        types: "chat".to_string(),
-        values: Values::Value(message.clone()),
-    };
+fn send_message(id: String, datetime: String, message: String, handle: tauri::AppHandle) -> () {
+    let send_data = JsonData::new(UUID.to_string(), "chat".parse().unwrap(), Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     unsafe {
         for (k, v) in USERS.iter() {
             if k.to_string() == id {
-                SOCKET.send_to(&data.into_bytes(), format!("{}", v.ip)).unwrap();
-                let connection = get_db_connection();
+                SOCKET.send_to(&data.into_bytes(), format!("{}", v.0)).unwrap();
+                let connection = match get_db_connection() {
+                    Ok(connect) => connect,
+                    Err(errstr) => {
+                        handle.emit_to("main", "error", errstr).unwrap();
+                        return
+                    },
+                };
                 let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", UUID.to_string(), k, datetime, message);
                 connection.execute(query).unwrap();
                 break;
@@ -216,7 +263,7 @@ fn send_message(id: String, datetime: String, message: String) {
         }
     }
 }
-fn main() {
+fn main() -> () {
     let quit = tauri::CustomMenuItem::new("quit".to_string(), "关闭窗口");
     let hide = tauri::CustomMenuItem::new("hide".to_string(), "隐藏窗口");
     let tray_menu = tauri::SystemTrayMenu::new()
@@ -226,9 +273,9 @@ fn main() {
     let system_tray = tauri::SystemTray::new().with_menu(tray_menu);
     tauri::Builder::default()
         .setup(|app| {
-            let apphanle = app.app_handle().clone();
+            let apphanle = app.app_handle();
             thread::spawn(move || { init_socket(apphanle).unwrap() });
-            tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".into()))
+            tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".parse().unwrap()))
                 .decorations(false)
                 .always_on_top(true)
                 .theme(Some(tauri::Theme::Dark))
@@ -238,116 +285,117 @@ fn main() {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, get_user_name, set_user_info, get_chats_history, send_message])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, get_admin_name, set_user_info, get_chats_history, send_message])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-fn get_db_connection() -> sqlite::Connection {
+fn get_db_connection() -> Result<sqlite::Connection, &'static str> {
     let mut dbfile = env::current_exe().unwrap();
     dbfile.pop();
     dbfile.push("chats.db");
     let dbexists = dbfile.exists();
     if !dbexists {
-        std::fs::File::create(&dbfile).unwrap();
+        if let Err(_) = std::fs::File::create(&dbfile) {
+            return Err("数据库文件生成失败!");
+        }
     }
-    let connection = sqlite::open(dbfile.as_path()).unwrap();
+    let connection = match sqlite::open(dbfile.as_path()) {
+        Ok(connect) => connect,
+        Err(_) => return Err("数据库打开失败")
+    };
     let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, chatmsg VARCHAR(200))";
-    connection.execute(query).unwrap();
-    connection
+    match connection.execute(query) {
+        Ok(()) => Ok(connection),
+        Err(_) => Err("sql语句执行失败!")
+    }
 }
 fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     SOCKET.set_broadcast(true)?;
     SOCKET.set_multicast_loop_v4(true)?;
-    let name = JsonData {
-        id: UUID.to_string(),
-        types: "name".to_string(),
-        values: Values::Value(get_user_name()),
-    };
-    let data = serde_json::to_string(&name).unwrap();
-    if cfg!(debug_assertions) {
-        SOCKET.send_to(&data.into_bytes(), "255.255.255.255:8080")?;
-    } else {
-        SOCKET.send_to(&data.into_bytes(), "255.255.255.255:9527")?;
-    }
+    let name = JsonData::new(UUID.to_string(), "name".parse().unwrap(), Values::Value(get_admin_name()));
+    let data = serde_json::to_string(&name)?;
+    SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {
         let mut buf = [0; 1000];
         let (amt, addr) = SOCKET.recv_from(&mut buf)?;
         let jsonvalue = serde_json::from_str(&String::from_utf8_lossy(&buf[..amt]).to_string());
         if jsonvalue.is_err() {
-            println!("json err:{}", jsonvalue.unwrap());
+            dbg!("json err:{}", jsonvalue.unwrap());
             continue;
         }
         let jsonvalue = serde_json::from_value::<JsonData>(jsonvalue.unwrap());
         if jsonvalue.is_err() {
-            println!("JsonData err");
+            dbg!("JsonData err");
             continue;
         }
-        let jsonvalue = jsonvalue.unwrap();
+        let jsonvalue = jsonvalue?;
         let ipstr = addr.to_string();
         let pos = ipstr.find(':').unwrap();
         let ipstr = &ipstr[..pos];
-        //联系人上线或修改用户名
-        if jsonvalue.types == "name" {
-            if let Values::Value(strval) = jsonvalue.values {
-                handle.emit_to("main", "ipname", ChatUser{ id: jsonvalue.id.clone(), name: strval.clone(), }).unwrap();
-                let us = UserInfo {
-                    ip: addr.to_string(),
-                    name: strval
+        jsonvalue.anaslysis(ipstr, &addr, &handle);
+        /*
+        match jsonvalue.types.as_str() {
+            //联系人上线或修改用户名
+            "name" => {
+                if let Values::Value(strval) = jsonvalue.values {
+                    handle.emit_to("main", "ipname", ChatUser{ id: jsonvalue.id.clone(), name: strval.clone(), }).unwrap();
+                    unsafe {
+                        USERS.insert(jsonvalue.id, (addr.to_string(), strval));
+                    }
                 };
+            }
+            "headimg" => {
                 unsafe {
-                    USERS.insert(jsonvalue.id, us);
-                }
-            };
-        } else if jsonvalue.types == "headimg" {
-            unsafe {
-                for (k, v) in USERS.iter() {
-                    if k.to_string() == jsonvalue.id {
-                        if v.ip != ipstr.to_string() {
-                            let us = UserInfo {
-                                ip: ipstr.to_string(),
-                                name: v.name.clone(),
-                            };
-                            USERS.insert(jsonvalue.id.clone(), us);
+                    for (k, v) in USERS.iter() {
+                        if k.to_string() == jsonvalue.id {
+                            if v.0 != ipstr.to_string() {
+                                USERS.insert(jsonvalue.id.clone(), (ipstr.to_string(), v.1.clone()));
+                            }
                         }
                     }
                 }
-            }
-            if let Values::HeadImg(headimg) = jsonvalue.values {
-                let mut curpath = env::current_exe().unwrap();
-                curpath.pop();
-                curpath.push(headimg.name);
-                let mut file = fs::File::open(curpath.clone()).unwrap();
-                file.write_all(&headimg.contents).unwrap();
-                handle.emit_to("main", "userhead", ModifyHead{ id: jsonvalue.id, path: curpath.to_string_lossy().to_string() }).unwrap();
-            }
-        } else if jsonvalue.types == "chat" {
-            let mut name = String::new();
-            unsafe {
-                for (k, v) in USERS.iter() {
-                    if *k == jsonvalue.id {
-                        if v.ip != ipstr.to_string() {
-                            let us = UserInfo {
-                                ip: ipstr.to_string(),
-                                name: v.name.clone(),
-                            };
-                            USERS.insert(jsonvalue.id.clone(), us);
-                        }
-                        name = v.name.clone();
-                    }
+                if let Values::HeadImg{name, contents} = jsonvalue.values {
+                    let mut curpath = env::current_exe().unwrap();
+                    curpath.pop();
+                    curpath.push(name);
+                    let mut file = fs::File::open(&curpath).unwrap();
+                    file.write_all(&contents).unwrap();
+                    handle.emit_to("main", "userhead", ModifyHead{ id: jsonvalue.id, path: curpath.to_string_lossy().to_string() }).unwrap();
                 }
             }
-            if let Values::Value(strval) = jsonvalue.values {
-                handle.emit_to("main", "chats", SendMsg{ id: jsonvalue.id.clone(), ip: ipstr.to_string(), name, msg: strval.clone() }).unwrap();
-                let connection = get_db_connection();
-                let now: DateTime<Local> = chrono::Local::now();
-                let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", jsonvalue.id, UUID.to_string(), datetime, strval);
-                connection.execute(query).unwrap();
-            };
+            "chat" => {
+                let mut name = String::new();
+                unsafe {
+                    for (k, v) in USERS.iter() {
+                        if *k == jsonvalue.id {
+                            if v.0 != ipstr.to_string() {
+                                USERS.insert(jsonvalue.id.clone(), (ipstr.to_string(), v.1.clone()));
+                            }
+                            name = v.1.clone();
+                        }
+                    }
+                }
+                if let Values::Value(strval) = jsonvalue.values {
+                    handle.emit_to("main", "chats", SendMsg{ id: jsonvalue.id.clone(), ip: ipstr.to_string(), name, msg: strval.clone() }).unwrap();
+                    let connection = match get_db_connection() {
+                        Ok(connect) => connect,
+                        Err(errstr) => {
+                            handle.emit_to("main", "error", errstr).unwrap();
+                            return Err(std::io::Error::new(std::io::ErrorKind::Other, errstr))
+                        }
+                    };
+                    let now: DateTime<Local> = chrono::Local::now();
+                    let datetime = now.format("%Y-%m-%d %H:%M:%S");
+                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", jsonvalue.id, UUID.to_string(), datetime, strval);
+                    connection.execute(query).unwrap();
+                };
+            }
+            _ => {}
         }
+        */
     }
 }
-fn menu_handle(app_handle: &tauri::AppHandle, event: tauri::SystemTrayEvent) {
+fn menu_handle(app_handle: &tauri::AppHandle, event: tauri::SystemTrayEvent) -> () {
     match event {
         tauri::SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
             "quit" => std::process::exit(0),
@@ -356,12 +404,12 @@ fn menu_handle(app_handle: &tauri::AppHandle, event: tauri::SystemTrayEvent) {
                 let window = app_handle.get_window("main").unwrap();
                 if window.is_visible().unwrap() {
                     window.hide().unwrap();
-                    item_handle.set_title("显示窗口").unwrap();
+                    item_handle.set_title("显示窗口").unwrap()
                 } else {
                     window.show().unwrap();
-                    item_handle.set_title("隐藏窗口").unwrap();
+                    item_handle.set_title("隐藏窗口").unwrap()
                 }
-            }
+            },
             _ => {}
         },
         _ => {}

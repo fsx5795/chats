@@ -79,9 +79,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             leftchat.setAttribute('head', JSON.stringify(msg))
         })
+        await listen('error', event => {
+            const { message } = window.__TAURI__.dialog
+            message(event.payload, { title: '警告', type: 'error' })
+        })
     }
     unlisten()
-    invoke('get_user_name').then(name => {
+    invoke('get_admin_name').then(name => {
         const head = document.getElementById('head')
         head.setAttribute('name', name)
     })
@@ -153,4 +157,5 @@ document.addEventListener('DOMContentLoaded', () => {
         chatsession.setAttribute('align', 'right')
     })
 })
+//关闭默认右键菜单
 window.addEventListener('contextmenu', event => event.preventDefault())
