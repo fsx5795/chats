@@ -52,10 +52,10 @@ struct JsonData {
     values: Values,
 }
 impl JsonData {
-    fn new(id: String, types: String, values: Values) -> JsonData {
+    fn new(id: &str, types: &str, values: Values) -> Self {
         JsonData {
-            id,
-            types,
+            id: id.to_owned(),
+            types: types.to_owned(),
             values
         }
     }
@@ -73,9 +73,9 @@ impl JsonData {
             "headimg" => {
                 unsafe {
                     for (k, v) in USERS.iter() {
-                        if k.to_string() == self.id {
-                            if v.0 != ipstr.to_string() {
-                                USERS.insert(self.id.clone(), (ipstr.to_string(), v.1.clone()));
+                        if k.to_owned() == self.id {
+                            if v.0 != ipstr.to_owned() {
+                                USERS.insert(self.id.clone(), (ipstr.to_owned(), v.1.clone()));
                             }
                         }
                     }
@@ -94,15 +94,15 @@ impl JsonData {
                 unsafe {
                     for (k, v) in USERS.iter() {
                         if *k == self.id {
-                            if v.0 != ipstr.to_string() {
-                                USERS.insert(self.id.clone(), (ipstr.to_string(), v.1.clone()));
+                            if v.0 != ipstr.to_owned() {
+                                USERS.insert(self.id.clone(), (ipstr.to_owned(), v.1.clone()));
                             }
                             name = v.1.clone();
                         }
                     }
                 }
                 if let Values::Value(strval) = &self.values {
-                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), ip: ipstr.to_string(), name, msg: strval.clone() }).unwrap();
+                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), ip: ipstr.to_owned(), name, msg: strval.clone() }).unwrap();
                     let connection = match get_db_connection() {
                         Ok(connect) => connect,
                         Err(errstr) => {
@@ -112,7 +112,7 @@ impl JsonData {
                     };
                     let now: DateTime<Local> = chrono::Local::now();
                     let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_string(), datetime, strval);
+                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, strval);
                     connection.execute(query).unwrap();
                 };
             }
@@ -167,7 +167,7 @@ fn get_admin_name() -> String {
         let i = Ini::load_from_file(inifile).unwrap();
         let section = i.section(Some("User").to_owned()).unwrap();
         if let Some(value) = section.get("name") {
-            return value.to_string();
+            return value.to_owned();
         }
         /*
         for (_, prop) in i.iter() {
@@ -191,7 +191,7 @@ fn set_user_info(name: String, img: String) -> () {
     let section = conf.section_mut(Some("User").to_owned()).unwrap();
     section.insert("name".to_owned(), name.to_owned());
     conf.write_to_file(inifile).unwrap();
-    let sendmsg = JsonData::new(UUID.to_string(), "name".to_string(), Values::Value(name));
+    let sendmsg = JsonData::new(&UUID.to_string(), "name", Values::Value(name));
     let data = serde_json::to_string(&sendmsg).unwrap();
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
     if !img.is_empty() {
@@ -202,7 +202,7 @@ fn set_user_info(name: String, img: String) -> () {
         let mut file = fs::File::open(imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
-        let sendmsg = JsonData::new(UUID.to_string(), "headimg".to_string(), Values::HeadImg{ name: imgsour.file_name().unwrap().to_string_lossy().to_string(), contents: filedata });
+        let sendmsg = JsonData::new(&UUID.to_string(), "headimg", Values::HeadImg{ name: imgsour.file_name().unwrap().to_string_lossy().to_string(), contents: filedata });
         let data = serde_json::to_string(&sendmsg).unwrap();
         SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
     }
@@ -211,7 +211,7 @@ fn set_user_info(name: String, img: String) -> () {
 fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
     unsafe {
         for (k, v) in USERS.iter() {
-            if k.to_string() == id {
+            if k.to_owned() == id {
                 let curname = &v.1;
                 let connection = match get_db_connection() {
                     Ok(connect) => connect,
@@ -229,10 +229,10 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
                         if name == "uuid" {
                             iself = value.unwrap() == UUID.to_string();
                         } else if name == "chatmsg" {
-                            msg = value.unwrap().to_string();
+                            msg = value.unwrap().to_owned();
                         }
                     }
-                    handle.emit_to("main", "chatstory", Chatstory{ iself: iself, name: curname.clone(), msg: msg.to_string() }).unwrap();
+                    handle.emit_to("main", "chatstory", Chatstory{ iself: iself, name: curname.clone(), msg: msg.to_owned() }).unwrap();
                     true
                 }).unwrap();
                 break;
@@ -243,11 +243,11 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
 }
 #[tauri::command]
 fn send_message(id: String, datetime: String, message: String, handle: tauri::AppHandle) -> () {
-    let send_data = JsonData::new(UUID.to_string(), "chat".parse().unwrap(), Values::Value(message.clone()));
+    let send_data = JsonData::new(&UUID.to_string(), "chat", Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     unsafe {
         for (k, v) in USERS.iter() {
-            if k.to_string() == id {
+            if k.to_owned() == id {
                 SOCKET.send_to(&data.into_bytes(), format!("{}", v.0)).unwrap();
                 let connection = match get_db_connection() {
                     Ok(connect) => connect,
@@ -256,7 +256,7 @@ fn send_message(id: String, datetime: String, message: String, handle: tauri::Ap
                         return
                     },
                 };
-                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", UUID.to_string(), k, datetime, message);
+                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", UUID.to_owned(), k, datetime, message);
                 connection.execute(query).unwrap();
                 break;
             }
@@ -264,8 +264,8 @@ fn send_message(id: String, datetime: String, message: String, handle: tauri::Ap
     }
 }
 fn main() -> () {
-    let quit = tauri::CustomMenuItem::new("quit".to_string(), "关闭窗口");
-    let hide = tauri::CustomMenuItem::new("hide".to_string(), "隐藏窗口");
+    let quit = tauri::CustomMenuItem::new("quit".to_owned(), "关闭窗口");
+    let hide = tauri::CustomMenuItem::new("hide".to_owned(), "隐藏窗口");
     let tray_menu = tauri::SystemTrayMenu::new()
         .add_item(quit)
         .add_native_item(tauri::SystemTrayMenuItem::Separator)
@@ -289,30 +289,30 @@ fn main() -> () {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-fn get_db_connection() -> Result<sqlite::Connection, &'static str> {
+fn get_db_connection() -> Result<sqlite::Connection, String> {
     let mut dbfile = env::current_exe().unwrap();
     dbfile.pop();
     dbfile.push("chats.db");
     let dbexists = dbfile.exists();
     if !dbexists {
         if let Err(_) = std::fs::File::create(&dbfile) {
-            return Err("数据库文件生成失败!");
+            return Err(String::from("数据库文件生成失败!"));
         }
     }
     let connection = match sqlite::open(dbfile.as_path()) {
         Ok(connect) => connect,
-        Err(_) => return Err("数据库打开失败")
+        Err(_) => return Err(String::from("数据库打开失败"))
     };
     let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, chatmsg VARCHAR(200))";
     match connection.execute(query) {
         Ok(()) => Ok(connection),
-        Err(_) => Err("sql语句执行失败!")
+        Err(_) => Err(String::from("sql语句执行失败!"))
     }
 }
 fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     SOCKET.set_broadcast(true)?;
     SOCKET.set_multicast_loop_v4(true)?;
-    let name = JsonData::new(UUID.to_string(), "name".parse().unwrap(), Values::Value(get_admin_name()));
+    let name = JsonData::new(&UUID.to_string(), "name", Values::Value(get_admin_name()));
     let data = serde_json::to_string(&name)?;
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {
@@ -333,66 +333,6 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         let pos = ipstr.find(':').unwrap();
         let ipstr = &ipstr[..pos];
         jsonvalue.anaslysis(ipstr, &addr, &handle);
-        /*
-        match jsonvalue.types.as_str() {
-            //联系人上线或修改用户名
-            "name" => {
-                if let Values::Value(strval) = jsonvalue.values {
-                    handle.emit_to("main", "ipname", ChatUser{ id: jsonvalue.id.clone(), name: strval.clone(), }).unwrap();
-                    unsafe {
-                        USERS.insert(jsonvalue.id, (addr.to_string(), strval));
-                    }
-                };
-            }
-            "headimg" => {
-                unsafe {
-                    for (k, v) in USERS.iter() {
-                        if k.to_string() == jsonvalue.id {
-                            if v.0 != ipstr.to_string() {
-                                USERS.insert(jsonvalue.id.clone(), (ipstr.to_string(), v.1.clone()));
-                            }
-                        }
-                    }
-                }
-                if let Values::HeadImg{name, contents} = jsonvalue.values {
-                    let mut curpath = env::current_exe().unwrap();
-                    curpath.pop();
-                    curpath.push(name);
-                    let mut file = fs::File::open(&curpath).unwrap();
-                    file.write_all(&contents).unwrap();
-                    handle.emit_to("main", "userhead", ModifyHead{ id: jsonvalue.id, path: curpath.to_string_lossy().to_string() }).unwrap();
-                }
-            }
-            "chat" => {
-                let mut name = String::new();
-                unsafe {
-                    for (k, v) in USERS.iter() {
-                        if *k == jsonvalue.id {
-                            if v.0 != ipstr.to_string() {
-                                USERS.insert(jsonvalue.id.clone(), (ipstr.to_string(), v.1.clone()));
-                            }
-                            name = v.1.clone();
-                        }
-                    }
-                }
-                if let Values::Value(strval) = jsonvalue.values {
-                    handle.emit_to("main", "chats", SendMsg{ id: jsonvalue.id.clone(), ip: ipstr.to_string(), name, msg: strval.clone() }).unwrap();
-                    let connection = match get_db_connection() {
-                        Ok(connect) => connect,
-                        Err(errstr) => {
-                            handle.emit_to("main", "error", errstr).unwrap();
-                            return Err(std::io::Error::new(std::io::ErrorKind::Other, errstr))
-                        }
-                    };
-                    let now: DateTime<Local> = chrono::Local::now();
-                    let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", jsonvalue.id, UUID.to_string(), datetime, strval);
-                    connection.execute(query).unwrap();
-                };
-            }
-            _ => {}
-        }
-        */
     }
 }
 fn menu_handle(app_handle: &tauri::AppHandle, event: tauri::SystemTrayEvent) -> () {
