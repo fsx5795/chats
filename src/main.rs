@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use uuid::Uuid;
-use sqlite;
+use sqlite::{self, Connection};
 use tauri::Manager;
 use std::{collections::HashMap, env, fs, io::{Read, Write}, net::{SocketAddr, UdpSocket}, path::PathBuf, thread};
 use ini::Ini;
@@ -29,6 +29,22 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     conf.write_to_file(inifile).unwrap();
     id
 });
+#[derive(Debug)]
+struct CusErr {
+    detail: String,
+}
+impl std::fmt::Display for CusErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.detail)
+    }
+}
+impl std::error::Error for CusErr {
+    /*
+    fn description(&self) -> &str {
+        &self.detail
+    }
+    */
+}
 //好友信息<id, (ip, name)>
 static mut USERS: once_cell::sync::Lazy<HashMap<String, (String, String)>> = once_cell::sync::Lazy::new(|| {
     HashMap::new()
@@ -59,12 +75,12 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &SocketAddr, handle: &tauri::AppHandle) -> () {
+    fn anaslysis(&self, ipstr: &str, addr: &SocketAddr, handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         match self.types.as_str() {
             //联系人上线或修改用户名
             "name" => {
                 if let Values::Value(strval) = &self.values {
-                    handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), }).unwrap();
+                    handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), })?;
                     unsafe {
                         USERS.insert(self.id.clone(), (addr.to_string(), strval.clone()));
                     }
@@ -81,12 +97,12 @@ impl JsonData {
                     }
                 }
                 if let Values::HeadImg{name, contents} = &self.values {
-                    let mut curpath = env::current_exe().unwrap();
+                    let mut curpath = env::current_exe()?;
                     curpath.pop();
                     curpath.push(name);
-                    let mut file = fs::File::open(&curpath).unwrap();
-                    file.write_all(&contents).unwrap();
-                    handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() }).unwrap();
+                    let mut file = fs::File::open(&curpath)?;
+                    file.write_all(&contents)?;
+                    handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() })?;
                 }
             }
             "chat" => {
@@ -102,22 +118,25 @@ impl JsonData {
                     }
                 }
                 if let Values::Value(strval) = &self.values {
-                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), ip: ipstr.to_owned(), name, msg: strval.clone() }).unwrap();
+                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), ip: ipstr.to_owned(), name, msg: strval.clone() })?;
                     let connection = match get_db_connection() {
                         Ok(connect) => connect,
                         Err(errstr) => {
-                            handle.emit_to("main", "error", errstr).unwrap();
-                            return
+                            handle.emit_to("main", "error", errstr)?;
+                            return Ok(())
                         }
                     };
                     let now: DateTime<Local> = chrono::Local::now();
                     let datetime = now.format("%Y-%m-%d %H:%M:%S");
                     let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, strval);
-                    connection.execute(query).unwrap();
+                    connection.execute(query)?;
                 };
             }
-            _ => {}
-        }
+            _ => return Err(Box::new(CusErr {
+                detail: "未匹配".to_owned(),
+            }))
+        };
+        Ok(())
     }
 }
 //发送给界面的用户头像更改文件
@@ -332,7 +351,7 @@ fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
         let ipstr = addr.to_string();
         let pos = ipstr.find(':').unwrap();
         let ipstr = &ipstr[..pos];
-        jsonvalue.anaslysis(ipstr, &addr, &handle);
+        jsonvalue.anaslysis(ipstr, &addr, &handle).unwrap();
     }
 }
 fn menu_handle(app_handle: &tauri::AppHandle, event: tauri::SystemTrayEvent) -> () {
