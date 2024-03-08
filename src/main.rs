@@ -16,11 +16,10 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     if inifile.exists() {
         let i = Ini::load_from_file(&inifile).unwrap();
         for (_, prop) in &i {
-            for (k, v) in prop.iter() {
-                if k == "id" {
-                    return Uuid::parse_str(v).unwrap();
-                }
-            }
+            let res = prop.iter().find(|&(k, _)| k == "id");
+            if let Some((_, v)) = res {
+                return Uuid::parse_str(v).unwrap();
+            };
         }
     }
     let id = Uuid::new_v4();
