@@ -16,8 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 value: event.payload.name
             }
             persons.querySelectorAll('chat-persons').forEach(p => {
-                console.log(p.getAttribute('userId'))
-                console.log(event.payload.id)
                 if (p.getAttribute('userId') === event.payload.id) {
                     isSame = true
                     p.setAttribute('name', JSON.stringify(msg))
@@ -93,7 +91,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dialog = document.querySelector('dialog')
     const input = dialog.querySelector('input')
     const img = dialog.querySelector('img')
-    let imgPath;
+    let imgPath = "";
+    //管理员信息设置对话框点击头像选择更改的头像文件
     img.addEventListener('click', async () => {
         const { readBinaryFile } = window.__TAURI__.fs
         const { open } = window.__TAURI__.dialog
@@ -114,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
             img.src = src
         }
     })
-    //管理员信息设置对话框点击头像选择更改的头像文件
     head.addEventListener('click', () => {
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
@@ -124,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             head.src = img.src
             const input = document.querySelector('input')
             invoke('set_user_info', { name: input.value, img: imgPath })
+            head.setAttribute('name', input.value)
             dialog.close()
         })
         dialog.showModal()

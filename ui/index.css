@@ -45,6 +45,7 @@ body > div {
     flex-direction: column;
     justify-content: flex-start;
     align-items: center;
+    backdrop-filter: blur(10px);
     background-color: rgb(36, 37, 40);
 }
 img {

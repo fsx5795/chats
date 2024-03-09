@@ -1,16 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use uuid::Uuid;
-use sqlite::{self, Connection};
+use sqlite;
 use tauri::Manager;
-use std::{collections::HashMap, env, fs, io::{Read, Write}, net::{SocketAddr, UdpSocket}, path::PathBuf, thread};
+use std::io::{Write, Read};
 use ini::Ini;
 use once_cell;
 use chrono::{self, DateTime, Local};
-static SOCKET: once_cell::sync::Lazy<UdpSocket> = once_cell::sync::Lazy::new(|| {
-    UdpSocket::bind("0.0.0.0:9527").unwrap()
+static SOCKET: once_cell::sync::Lazy<std::net::UdpSocket> = once_cell::sync::Lazy::new(|| {
+    std::net::UdpSocket::bind("0.0.0.0:9527").unwrap()
 });
 static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
-    let mut inifile = env::current_exe().unwrap();
+    let mut inifile = std::env::current_exe().unwrap();
     inifile.pop();
     inifile.push("conf.ini");
     if inifile.exists() {
@@ -45,8 +45,8 @@ impl std::error::Error for CusErr {
     */
 }
 //好友信息<id, (ip, name)>
-static mut USERS: once_cell::sync::Lazy<HashMap<String, (String, String)>> = once_cell::sync::Lazy::new(|| {
-    HashMap::new()
+static mut USERS: once_cell::sync::Lazy<std::collections::HashMap<String, (String, String)>> = once_cell::sync::Lazy::new(|| {
+    std::collections::HashMap::new()
 });
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ChatUser {
@@ -74,7 +74,7 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &SocketAddr, handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         match self.types.as_str() {
             //联系人上线或修改用户名
             "name" => {
@@ -96,10 +96,10 @@ impl JsonData {
                     }
                 }
                 if let Values::HeadImg{name, contents} = &self.values {
-                    let mut curpath = env::current_exe()?;
+                    let mut curpath = std::env::current_exe()?;
                     curpath.pop();
                     curpath.push(name);
-                    let mut file = fs::File::open(&curpath)?;
+                    let mut file = std::fs::File::open(&curpath)?;
                     file.write_all(&contents)?;
                     handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() })?;
                 }
@@ -167,9 +167,8 @@ async fn close_splashscreen(window: tauri::Window) -> () {
         window.get_window("main").expect("no window labeled 'main' found").show().unwrap();
     }
     window.get_window("main").unwrap().set_always_on_top(false).unwrap();
-    if cfg!(debug_assertions) {
-        window.get_window("main").unwrap().open_devtools();
-    }
+    #[cfg(debug_assertions)]
+    window.get_window("main").unwrap().open_devtools();
     /*
     std::thread::sleep(std::time::Duration::from_micros(500_000));
     let handle = window.app_handle();
@@ -178,7 +177,7 @@ async fn close_splashscreen(window: tauri::Window) -> () {
 }
 #[tauri::command]
 fn get_admin_name() -> String {
-    let mut inifile = env::current_exe().unwrap();
+    let mut inifile = std::env::current_exe().unwrap();
     inifile.pop();
     inifile.push("conf.ini");
     if inifile.exists() {
@@ -201,7 +200,7 @@ fn get_admin_name() -> String {
 }
 #[tauri::command]
 fn set_user_info(name: String, img: String) -> () {
-    let mut curpath = env::current_exe().unwrap();
+    let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
     let mut inifile = curpath.clone();
     inifile.push("conf.ini");
@@ -214,10 +213,10 @@ fn set_user_info(name: String, img: String) -> () {
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
     if !img.is_empty() {
         let mut imgfile = curpath;
-        let imgsour = PathBuf::from(img);
+        let imgsour = std::path::PathBuf::from(img);
         imgfile.push(imgsour.file_name().unwrap());
-        fs::copy(&imgsour, &imgfile).unwrap();
-        let mut file = fs::File::open(imgfile).unwrap();
+        std::fs::copy(&imgsour, &imgfile).unwrap();
+        let mut file = std::fs::File::open(imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
         let sendmsg = JsonData::new(&UUID.to_string(), "headimg", Values::HeadImg{ name: imgsour.file_name().unwrap().to_string_lossy().to_string(), contents: filedata });
@@ -292,7 +291,7 @@ fn main() -> () {
     tauri::Builder::default()
         .setup(|app| {
             let apphanle = app.app_handle();
-            thread::spawn(move || { init_socket(apphanle).unwrap() });
+            std::thread::spawn(move || { init_socket(apphanle).unwrap() });
             tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".parse().unwrap()))
                 .decorations(false)
                 .always_on_top(true)
@@ -308,7 +307,7 @@ fn main() -> () {
         .expect("error while running tauri application");
 }
 fn get_db_connection() -> Result<sqlite::Connection, String> {
-    let mut dbfile = env::current_exe().unwrap();
+    let mut dbfile = std::env::current_exe().unwrap();
     dbfile.pop();
     dbfile.push("chats.db");
     let dbexists = dbfile.exists();
