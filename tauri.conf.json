@@ -19,7 +19,11 @@
             },
             "fs": {
                 "all": false,
+                "scope": ["$RESOURCE/*"],
                 "readFile": true
+            },
+            "path": {
+                "all": true
             }
         },
         "bundle": {

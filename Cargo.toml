@@ -7,7 +7,7 @@ edition = '2021'
 tauri-build = { features = [] }
 
 [dependencies]
-tauri = { version = "*", features = [ "dialog-message", "fs-read-file", "dialog-save", "dialog-open", "system-tray", "window-close", "window-hide", "window-show"] }
+tauri = { version = "*", features = [ "path-all", "dialog-message", "fs-read-file", "dialog-save", "dialog-open", "system-tray", "window-close", "window-hide", "window-show"] }
 serde = "*"
 serde_json = "*"
 rust-ini = "*"

@@ -1,4 +1,6 @@
 let curId
+const { readBinaryFile } = window.__TAURI__.fs
+const { open } = window.__TAURI__.dialog
 document.addEventListener('DOMContentLoaded', () => {
     const { invoke } = window.__TAURI__.tauri
     /*
@@ -43,14 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         //接收到聊天消息
         await listen('chats', event => {
-            const leftchat = document.createElement('chat-session')
-            session.appendChild(leftchat)
-            const msg = {
-                head: event.payload.name,
-                value: event.payload.msg
+            if (event.payload.id === curId) {
+                const leftchat = document.createElement('chat-session')
+                session.appendChild(leftchat)
+                const msg = {
+                    head: event.payload.name,
+                    value: event.payload.msg
+                }
+                leftchat.setAttribute('message', JSON.stringify(msg))
+                leftchat.setAttribute('align', 'left')
             }
-            leftchat.setAttribute('message', JSON.stringify(msg))
-            leftchat.setAttribute('align', 'left')
         })
         await listen('chatstory', event => {
             const session = document.getElementById('session')
@@ -69,13 +73,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 leftchat.setAttribute('align', 'left')
             }
         })
-        await listen('userhead', event => {
+        await listen('userhead', async(event) => {
+            const { resourceDir, join } = window.__TAURI__.path
+            //const { convertFileSrc } = window.__TAURI__.tauri
+            const resDir = await resourceDir()
             const leftchat = document.createElement('chat-persons')
+            const persons = document.getElementById('persons')
+            persons.appendChild(leftchat)
+            //const path = join(resDir, event.payload.path)
+            const path = join(resDir, "0a1bd0d7acbd3f2210a4ede05b521642.jpg")
+            path.then(p => {
+                console.log(p)
+                const contents = readBinaryFile(p)
+                const blob = new Blob([contents])
+                const src = URL.createObjectURL(blob)
+                //const src = convertFileSrc(p)
+                const msg = {
+                    //value: event.payload.path
+                    value: src
+                }
+                /*
+                const msg = {
+                    value: "C:\\Users\\fsx\\chats\\target\\debug\\def"
+                }
+                */
+                leftchat.setAttribute('head', JSON.stringify(msg))
+            })
+        })
+        await listen('userfile', event => {
+            const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
             const msg = {
+                head: event.payload.name,
                 value: event.payload.path
             }
-            leftchat.setAttribute('head', JSON.stringify(msg))
+            leftchat.setAttribute('message', JSON.stringify(msg))
+            leftchat.setAttribute('align', 'left')
         })
         await listen('error', event => {
             const { message } = window.__TAURI__.dialog
@@ -94,8 +127,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let imgPath = "";
     //管理员信息设置对话框点击头像选择更改的头像文件
     img.addEventListener('click', async () => {
-        const { readBinaryFile } = window.__TAURI__.fs
-        const { open } = window.__TAURI__.dialog
         imgPath = await open({
             multiple: false,
             filters: [{
@@ -154,6 +185,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         chatsession.setAttribute('message', JSON.stringify(msg))
         chatsession.setAttribute('align', 'right')
+    })
+    const filebtn = document.getElementById('filebtn')
+    filebtn.addEventListener('click', () => {
+        let filePath = open({
+            multiple: false,
+            filters: [{
+                name: 'File',
+                extensions: ['*']
+            }]
+        })
+        if (Array.isArray(filePath)) {
+        } else if (filePath === null) {
+        } else {
+            filePath.then(value => {
+                const date = new Date()
+                const year = date.getFullYear().toString().padStart(4, '0')
+                const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                const day = date.getDate().toString().padStart(2, '0')
+                const hour = date.getHours().toString().padStart(2, '0')
+                const minute = date.getMinutes().toString().padStart(2, '0')
+                const second = date.getSeconds().toString().padStart(2, '0')
+                invoke('send_file', { id: curId, datetime: `${year}-${month}-${day} ${hour}:${minute}:${second}`, path: value })
+                const leftchat = document.createElement('chat-session')
+                session.appendChild(leftchat)
+                const head = document.getElementById('head')
+                const msg = {
+                    head: head.getAttribute('name'),
+                    value
+                }
+                leftchat.setAttribute('message', JSON.stringify(msg))
+                leftchat.setAttribute('align', 'right')
+            })
+        }
     })
 })
 //关闭默认右键菜单
