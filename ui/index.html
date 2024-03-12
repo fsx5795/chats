@@ -7,6 +7,7 @@
         <script src="index.js" charset="utf-8"></script>
         <script src="chatsession.js" charset="utf-8"></script>
         <script src="wcperson.js" charset="utf-8"></script>
+        <!--聊天信息组件-->
         <template id="wchat">
             <link rel="stylesheet" href="chatsession.css"/>
             <div id="chat">
@@ -17,9 +18,11 @@
                 </div>
             </div>
         </template>
+        <!--联系人组件-->
         <template id="wcperson">
+            <link rel="stylesheet" href="wcperson.css"/>
             <div>
-                <img/>
+                <img src="head.jpg"/>
                 <span></span>
             </div>
         </template>
@@ -27,13 +30,13 @@
     <body>
         <dialog closeByMask>
             <div>
-                <img src="head.jpg"/>
+                <img class="round" src="head.jpg"/>
                 <input type="text"/>
                 <button>确定</button>
             </div>
         </dialog>
         <div id="tools" data-tauri-drag-region>
-            <img id="head" src="head.jpg"/>
+            <img id="head" class="round" src="head.jpg"/>
             <!--
             <button></button>
             <button></button>
@@ -43,7 +46,10 @@
         <div id="chats">
             <div id="session"></div>
             <div id="control">
-                <div><button id="filebtn">文件</button></div>
+                <div>
+                    <img id="filebtn" class="rectangle" src="file.png"/>
+                    <!--<img id="imgbtn" class="rectangle" src="picture.png"/>-->
+                </div>
                 <textarea id="inputext"></textarea>
                 <button id="send">发送</button>
             </div>

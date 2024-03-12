@@ -24,7 +24,7 @@ static UUID: once_cell::sync::Lazy<Uuid> = once_cell::sync::Lazy::new(|| {
     }
     let id = Uuid::new_v4();
     let mut conf = Ini::new();
-    conf.with_section(Some("User")).set("id", id);
+    conf.with_section(Some("Admin")).set("id", id);
     conf.write_to_file(inifile).unwrap();
     id
 });
@@ -45,9 +45,11 @@ impl std::error::Error for CusErr {
     */
 }
 //好友信息<id, (ip, name)>
+/*
 static mut USERS: once_cell::sync::Lazy<std::collections::HashMap<String, (String, String)>> = once_cell::sync::Lazy::new(|| {
     std::collections::HashMap::new()
 });
+*/
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ChatUser {
     id: String,
@@ -81,9 +83,31 @@ impl JsonData {
             "name" => {
                 if let Values::Value(strval) = &self.values {
                     handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), })?;
+                    match get_db_connection() {
+                        Ok(connect) => {
+                            let mut b = true;
+                            let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", self.id);
+                            connect.iterate(query, |_| {
+                                b = false;
+                                let query = format!("UPDATE userinfo SET userid = '{}', name = '{}', ip = '{}';", self.id, strval, addr);
+                                connect.execute(query).unwrap();
+                                true
+                            }).unwrap();
+                            if b {
+                                let query = format!("INSERT INTO userinfo (userid, name, ip) VALUES ('{}', '{}', '{}');", self.id, strval, addr);
+                                connect.execute(query).unwrap();
+                            }
+                        }
+                        Err(errstr) => {
+                            handle.emit_to("main", "error", errstr)?;
+                            return Ok(())
+                        }
+                    };
+                    /*
                     unsafe {
                         USERS.insert(self.id.clone(), (addr.to_string(), strval.clone()));
                     }
+                    */
                 };
             }
             "headimg" => {
@@ -99,7 +123,6 @@ impl JsonData {
                             file.write_all(&contents)?;
                         }
                         "end" => {
-                            println!("{}", curpath.to_string_lossy().to_string());
                             handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: self.id.clone() })?;
                             /*
                             let connection = match get_db_connection() {
@@ -174,6 +197,11 @@ impl JsonData {
         Ok(())
     }
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct AdminInfo {
+    name: String,
+    image: String
+}
 //发送给界面的用户头像更改文件
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ModifyHead {
@@ -217,38 +245,42 @@ async fn close_splashscreen(window: tauri::Window) -> () {
     */
 }
 #[tauri::command]
-fn get_admin_name() -> String {
+fn get_admin_info() -> String {
     let mut inifile = std::env::current_exe().unwrap();
     inifile.pop();
     inifile.push("conf.ini");
     if inifile.exists() {
         let i = Ini::load_from_file(inifile).unwrap();
-        let section = i.section(Some("User").to_owned()).unwrap();
+        let section = i.section(Some("Admin").to_owned()).unwrap();
+        let mut name = String::new();
+        let mut image = String::new();
         if let Some(value) = section.get("name") {
-            return value.to_owned();
+            name = value.to_owned();
         }
-        /*
-        for (_, prop) in i.iter() {
-            for (k, v) in prop.iter() {
-                if k == "name" {
-                    return v.to_string();
-                }
-            }
+        if let Some(value) = section.get("image") {
+            image = value.to_owned();
         }
-        */
+        let json = AdminInfo {
+            name,
+            image,
+        };
+        return serde_json::to_string(&json).unwrap();
     }
     String::new()
 }
 #[tauri::command]
-fn set_user_info(name: String, img: String) -> () {
+fn get_user_name(id: String) -> String {
+    update_ipaddr(&id, "")
+}
+#[tauri::command]
+fn set_admin_info(name: String, img: String) -> () {
     let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
     let mut inifile = curpath.clone();
     inifile.push("conf.ini");
     let mut conf = Ini::load_from_file(&inifile).unwrap();
-    let section = conf.section_mut(Some("User").to_owned()).unwrap();
+    let section = conf.section_mut(Some("Admin").to_owned()).unwrap();
     section.insert("name".to_owned(), name.to_owned());
-    conf.write_to_file(inifile).unwrap();
     let sendmsg = JsonData::new(&UUID.to_string(), "name", Values::Value(name));
     let data = serde_json::to_string(&sendmsg).unwrap();
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
@@ -257,7 +289,7 @@ fn set_user_info(name: String, img: String) -> () {
         let imgsour = std::path::PathBuf::from(img);
         imgfile.push(imgsour.file_name().unwrap());
         std::fs::copy(&imgsour, &imgfile).unwrap();
-        let mut file = std::fs::File::open(imgfile).unwrap();
+        let mut file = std::fs::File::open(&imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
         let sendmsg = JsonData::new(&UUID.to_string(), "headimg", Values::HeadImg{ status: String::from("start"), contents: vec![] });
@@ -271,10 +303,42 @@ fn set_user_info(name: String, img: String) -> () {
         let sendmsg = JsonData::new(&UUID.to_string(), "headimg", Values::HeadImg{ status: String::from("end"), contents: vec![] });
         let data = serde_json::to_string(&sendmsg).unwrap();
         SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
+        section.insert("image".to_owned(), imgfile.to_string_lossy().to_string());
     }
+    conf.write_to_file(inifile).unwrap();
 }
 #[tauri::command]
 fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
+    let query = format!("SELECT name FROM userinfo WHERE userid = '{}';", id);
+    match get_db_connection() {
+        Ok(connect) => {
+            connect.iterate(query, |pairs| {
+                for &(_, value) in pairs.iter() {
+                    value.unwrap();
+                    let query = format!("SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';", id, id);
+                    connect.iterate(query, |pairs| {
+                        let mut iself = false;
+                        let mut msg = String::new();
+                        for &(name, value) in pairs {
+                            if name == "uuid" {
+                                iself = value.unwrap() == UUID.to_string();
+                            } else if name == "chatmsg" {
+                                msg = value.unwrap().to_owned();
+                            }
+                        }
+                        handle.emit_to("main", "chatstory", Chatstory{ iself, name: value.unwrap().to_string(), msg: msg.to_owned() }).unwrap();
+                        true
+                    }).unwrap();
+                }
+                true
+            }).unwrap();
+        }
+        Err(errstr) => {
+            handle.emit_to("main", "error", errstr).unwrap();
+            return
+        },
+    };
+    /*
     unsafe {
         for (k, v) in USERS.iter() {
             if k.to_owned() == id {
@@ -305,12 +369,31 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
             }
         }
     }
+    */
     //handle.emit_to("main", "error", "错误错误错误!".to_string()).unwrap();
 }
 #[tauri::command]
 fn send_message(id: String, datetime: String, message: String, handle: tauri::AppHandle) -> () {
     let send_data = JsonData::new(&UUID.to_string(), "chat", Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
+    match get_db_connection() {
+        Ok(connect) => {
+            let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
+            connect.iterate(query, |pairs| {
+                for &(_, value) in pairs.iter() {
+                    SOCKET.send_to(&data.clone().into_bytes(), format!("{}", value.unwrap())).unwrap();
+                }
+                true
+            }).unwrap();
+            let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", UUID.to_owned(), id, datetime, message);
+            connect.execute(query).unwrap();
+        }
+        Err(errstr) => {
+            handle.emit_to("main", "error", errstr).unwrap();
+            //return Ok(())
+        }
+    }
+    /*
     unsafe {
         for (k, v) in USERS.iter() {
             if k.to_owned() == id {
@@ -328,12 +411,44 @@ fn send_message(id: String, datetime: String, message: String, handle: tauri::Ap
             }
         }
     }
+    */
 }
 #[tauri::command]
 fn send_file(id: String, datetime: String, path: String, handle: tauri::AppHandle) -> () {
     if !path.is_empty() {
         match std::fs::File::open(&path) {
             Ok(mut file) => {
+                match get_db_connection() {
+                    Ok(connect) => {
+                        let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
+                        connect.iterate(query, |pairs| {
+                            for &(_, value) in pairs.iter() {
+                                let mut buffer = Vec::new();
+                                file.read_to_end(&mut buffer).unwrap();
+                                let filesour = std::path::PathBuf::from(&path);
+                                let sendmsg = JsonData::new(&UUID.to_string(), "file", Values::FileData{filename: filesour.file_name().unwrap().to_string_lossy().to_string(), status: String::from("start"), contents: vec![]});
+                                let data = serde_json::to_string(&sendmsg).unwrap();
+                                SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                                for chunk in buffer.chunks(512) {
+                                    let sendmsg = JsonData::new(&UUID.to_string(), "file", Values::FileData{filename: filesour.file_name().unwrap().to_string_lossy().to_string(), status: String::from("data"), contents: chunk.to_vec()});
+                                    let data = serde_json::to_string(&sendmsg).unwrap();
+                                    SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                                }
+                                let sendmsg = JsonData::new(&UUID.to_string(), "file", Values::FileData{filename: filesour.file_name().unwrap().to_string_lossy().to_string(), status: String::from("end"), contents: vec![]});
+                                let data = serde_json::to_string(&sendmsg).unwrap();
+                                SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                            }
+                            true
+                        }).unwrap();
+                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", UUID.to_owned(), id, datetime, path);
+                        connect.execute(query).unwrap();
+                    }
+                    Err(errstr) => {
+                        handle.emit_to("main", "error", errstr).unwrap();
+                        //return Ok(())
+                    }
+                }
+                /*
                 unsafe {
                     for (k, v) in USERS.iter() {
                         if k.to_owned() == id {
@@ -364,6 +479,7 @@ fn send_file(id: String, datetime: String, path: String, handle: tauri::AppHandl
                         }
                     }
                 }
+                */
             }
             Err(error) => match error.kind() {
                 ErrorKind::NotFound => {}
@@ -394,17 +510,36 @@ fn main() -> () {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, get_admin_name, set_user_info, get_chats_history, send_message, send_file])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 fn update_ipaddr(id: &str, ip: &str) -> String {
     let mut name = String::new();
+    if let Ok(connect) = get_db_connection() {
+        let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", id);
+        connect.iterate(query, |pairs| {
+            for &(colname, value) in pairs.iter() {
+                if colname == "ip" && value.unwrap() !=  ip.to_owned() {
+                    let query = format!("UPDATE userinfo SET userid = '{}', ip = '{}';", id, ip);
+                    connect.execute(query).unwrap();
+                }
+                if colname == "name" {
+                    name = value.unwrap().to_string();
+                }
+            }
+            true
+        }).unwrap();
+    };
+    name
+    /*
     unsafe {
         for (k, v) in USERS.iter() {
             if k.to_owned() == id {
-                if v.0 != ip.to_owned() {
-                    USERS.insert(id.to_owned(), (ip.to_owned(), v.1.clone()));
+                if !ip.is_empty() {
+                    if v.0 != ip.to_owned() {
+                        USERS.insert(id.to_owned(), (ip.to_owned(), v.1.clone()));
+                    }
                 }
                 name = v.1.clone();
                 break;
@@ -412,6 +547,7 @@ fn update_ipaddr(id: &str, ip: &str) -> String {
         }
     }
     name
+    */
 }
 fn get_db_connection() -> Result<sqlite::Connection, String> {
     let mut dbfile = std::env::current_exe().unwrap();
@@ -427,16 +563,25 @@ fn get_db_connection() -> Result<sqlite::Connection, String> {
         Ok(connect) => connect,
         Err(_) => return Err(String::from("数据库打开失败"))
     };
-    let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, chatmsg VARCHAR(200))";
+    let query = "CREATE TABLE IF NOT EXISTS userinfo (userid TEXT, name TEXT, ip TEXT, imgpath VARCHAR(200))";
     match connection.execute(query) {
-        Ok(()) => Ok(connection),
+        Ok(()) => {
+            let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, chatmsg VARCHAR(200))";
+            match connection.execute(query) {
+                Ok(()) => Ok(connection),
+                Err(_) => Err(String::from("sql语句执行失败!"))
+            }
+        }
         Err(_) => Err(String::from("sql语句执行失败!"))
     }
 }
 fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     SOCKET.set_broadcast(true)?;
     SOCKET.set_multicast_loop_v4(true)?;
-    let name = JsonData::new(&UUID.to_string(), "name", Values::Value(get_admin_name()));
+    let jsondata = get_admin_info();
+    let jsondata = serde_json::from_str(&jsondata);
+    let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
+    let name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
     let data = serde_json::to_string(&name)?;
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {

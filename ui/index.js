@@ -1,6 +1,17 @@
 let curId
+let curHead = "head.jpg"
 const { readBinaryFile } = window.__TAURI__.fs
 const { open } = window.__TAURI__.dialog
+function getDateTime() {
+    const date = new Date()
+    const year = date.getFullYear().toString().padStart(4, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const day = date.getDate().toString().padStart(2, '0')
+    const hour = date.getHours().toString().padStart(2, '0')
+    const minute = date.getMinutes().toString().padStart(2, '0')
+    const second = date.getSeconds().toString().padStart(2, '0')
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+}
 document.addEventListener('DOMContentLoaded', () => {
     const { invoke } = window.__TAURI__.tauri
     /*
@@ -29,10 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
             chatperson.setAttribute('userId', event.payload.id)
             chatperson.setAttribute('name', JSON.stringify(msg))
             chatperson.onclick = () => {
-                persons.querySelectorAll('chat-persons').forEach(p => {
-                    p.setAttribute('bgcolor', 'nomal')
-                })
                 if (curId !== event.payload.id) {
+                    persons.querySelectorAll('chat-persons').forEach(p => {
+                        p.setAttribute('bgcolor', 'nomal')
+                    })
                     chatperson.setAttribute('bgcolor', 'pressed')
                     const session = document.getElementById('session')
                     session.querySelectorAll('chat-session').forEach(chat => {
@@ -44,16 +55,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
         //接收到聊天消息
-        await listen('chats', event => {
+        await listen('chats', async(event) => {
             if (event.payload.id === curId) {
                 const leftchat = document.createElement('chat-session')
                 session.appendChild(leftchat)
+                const head = document.getElementById('head')
                 const msg = {
+                    src: event.payload.iself ? head.src : curHead,
                     head: event.payload.name,
                     value: event.payload.msg
                 }
                 leftchat.setAttribute('message', JSON.stringify(msg))
                 leftchat.setAttribute('align', 'left')
+            }
+            const { isPermissionGranted, requestPermission, sendNotification } = window.__TAURI__.notification
+            let permissionGranted = await isPermissionGranted()
+            if (!permissionGranted) {
+                const permission = await requestPermission()
+                permissionGranted = permission === 'granted'
+            }
+            if (permissionGranted) {
+                invoke('get_user_name', { id: curId }).then(name => {
+                    sendNotification({ title: name, body: '发来一条消息' })
+                })
             }
         })
         await listen('chatstory', event => {
@@ -63,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
             //event.payload.id
             const head = document.getElementById('head')
             const msg = {
+                src: event.payload.iself ? head.src : curHead,
                 head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
                 value: event.payload.msg
             }
@@ -75,28 +100,20 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         await listen('userhead', async(event) => {
             const { resourceDir, join } = window.__TAURI__.path
-            //const { convertFileSrc } = window.__TAURI__.tauri
             const resDir = await resourceDir()
             const leftchat = document.createElement('chat-persons')
             const persons = document.getElementById('persons')
             persons.appendChild(leftchat)
-            //const path = join(resDir, event.payload.path)
-            const path = join(resDir, "0a1bd0d7acbd3f2210a4ede05b521642.jpg")
-            path.then(p => {
+            const path = join(resDir, event.payload.path)
+            path.then(async(p) => {
                 console.log(p)
-                const contents = readBinaryFile(p)
+                const contents = await readBinaryFile(p)
                 const blob = new Blob([contents])
                 const src = URL.createObjectURL(blob)
-                //const src = convertFileSrc(p)
+                curHead = src
                 const msg = {
-                    //value: event.payload.path
                     value: src
                 }
-                /*
-                const msg = {
-                    value: "C:\\Users\\fsx\\chats\\target\\debug\\def"
-                }
-                */
                 leftchat.setAttribute('head', JSON.stringify(msg))
             })
         })
@@ -116,11 +133,15 @@ document.addEventListener('DOMContentLoaded', () => {
         })
     }
     unlisten()
-    invoke('get_admin_name').then(name => {
-        const head = document.getElementById('head')
-        head.setAttribute('name', name)
-    })
     const head = document.getElementById('head')
+    invoke('get_admin_info').then(async(jsonData) => {
+        const info = JSON.parse(jsonData)
+        head.setAttribute('name', info.name)
+        const contents = await readBinaryFile(info.image)
+        const blob = new Blob([contents])
+        const src = URL.createObjectURL(blob)
+        head.src = src
+    })
     const dialog = document.querySelector('dialog')
     const input = dialog.querySelector('input')
     const img = dialog.querySelector('img')
@@ -148,11 +169,10 @@ document.addEventListener('DOMContentLoaded', () => {
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
         adminBtn.addEventListener('click', () => {
-            const head = document.getElementById('head')
             const img = dialog.querySelector('img')
             head.src = img.src
             const input = document.querySelector('input')
-            invoke('set_user_info', { name: input.value, img: imgPath })
+            invoke('set_admin_info', { name: input.value, img: imgPath })
             head.setAttribute('name', input.value)
             dialog.close()
         })
@@ -167,19 +187,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const send = document.getElementById('send')
     send.addEventListener('click', () => {
         const textarea = document.getElementById('inputext')
-        const date = new Date()
-        const year = date.getFullYear().toString().padStart(4, '0')
-        const month = (date.getMonth() + 1).toString().padStart(2, '0')
-        const day = date.getDate().toString().padStart(2, '0')
-        const hour = date.getHours().toString().padStart(2, '0')
-        const minute = date.getMinutes().toString().padStart(2, '0')
-        const second = date.getSeconds().toString().padStart(2, '0')
-        invoke('send_message', { id: curId, datetime: `${year}-${month}-${day} ${hour}:${minute}:${second}`, message: textarea.value })
+        invoke('send_message', { id: curId, datetime: getDateTime(), message: textarea.value })
         const session = document.getElementById('session')
         const chatsession = document.createElement('chat-session')
         session.appendChild(chatsession)
         const head = document.getElementById('head')
         const msg = {
+            src: head.src,
             head: head.getAttribute('name'),
             value: textarea.value
         }
@@ -199,26 +213,57 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (filePath === null) {
         } else {
             filePath.then(value => {
-                const date = new Date()
-                const year = date.getFullYear().toString().padStart(4, '0')
-                const month = (date.getMonth() + 1).toString().padStart(2, '0')
-                const day = date.getDate().toString().padStart(2, '0')
-                const hour = date.getHours().toString().padStart(2, '0')
-                const minute = date.getMinutes().toString().padStart(2, '0')
-                const second = date.getSeconds().toString().padStart(2, '0')
-                invoke('send_file', { id: curId, datetime: `${year}-${month}-${day} ${hour}:${minute}:${second}`, path: value })
-                const leftchat = document.createElement('chat-session')
-                session.appendChild(leftchat)
-                const head = document.getElementById('head')
-                const msg = {
-                    head: head.getAttribute('name'),
-                    value
+                if (value !== null) {
+                    invoke('send_file', { id: curId, datetime: getDateTime(), path: value })
+                    const leftchat = document.createElement('chat-session')
+                    session.appendChild(leftchat)
+                    const head = document.getElementById('head')
+                    const msg = {
+                        head: head.getAttribute('name'),
+                        value
+                    }
+                    leftchat.setAttribute('message', JSON.stringify(msg))
+                    leftchat.setAttribute('align', 'right')
                 }
-                leftchat.setAttribute('message', JSON.stringify(msg))
-                leftchat.setAttribute('align', 'right')
             })
         }
     })
+    /*
+    const imgbtn = document.getElementById('imgbtn')
+    imgbtn.addEventListener('click', () => {
+        let filePath = open({
+            multiple: false,
+            filters: [{
+                name: 'Image',
+                extensions: ['png', 'jpg']
+            }]
+        })
+        if (Array.isArray(filePath)) {
+        } else if (filePath === null) {
+        } else {
+            filePath.then(value => {
+                if (value !== null) {
+                    invoke('send_img', { id: curId, datetime: getDateTime(), path: value })
+                    const leftchat = document.createElement('chat-session')
+                    session.appendChild(leftchat)
+                    const head = document.getElementById('head')
+                    const msg = {
+                        head: head.getAttribute('name'),
+                        value
+                    }
+                    leftchat.setAttribute('message', JSON.stringify(msg))
+                    leftchat.setAttribute('align', 'right')
+                }
+            })
+        }
+    })
+    */
 })
 //关闭默认右键菜单
 window.addEventListener('contextmenu', event => event.preventDefault())
+window.addEventListener('resize', () => {
+    const chats = document.querySelectorAll('chat-session')
+    chats.forEach(chat => {
+        chat.setAttribute('textwidth', document.getElementById('chats').offsetWidth - 500)
+    })
+})

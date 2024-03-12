@@ -48,7 +48,7 @@ body > div {
     backdrop-filter: blur(10px);
     background-color: rgb(36, 37, 40);
 }
-img {
+.round {
     width: 35px;
     height: 35px;
     padding: 0;
@@ -97,6 +97,11 @@ img {
     justify-content: space-around;
     flex: 1;
 }
+#control > div {
+    width: 100%;
+    display: flex;
+    background-color: rgb(17, 17, 17);
+}
 /*聊天窗口的文本输入框*/
 textarea {
     width: 100%;
@@ -108,6 +113,18 @@ textarea {
     box-sizing: border-box;
     color: white;
     background-color: rgb(27, 27, 27);
+}
+.rectangle {
+    width: 30px;
+    height: 30px;
+    border: solid 1px rgb(17, 17, 17);
+    background-color: rgb(17, 17, 17);
+}
+#filebtn:hover {
+    border: solid 1px rgb(36, 37, 40);
+    border-radius: 15%;
+    background-color: rgb(27, 27, 27);
+    box-shadow: 1px 1px 1px 2px rgb(36, 37, 40) outset;
 }
 #send {
     width: 80px;

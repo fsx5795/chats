@@ -24,10 +24,17 @@
             },
             "path": {
                 "all": true
+            },
+            "notification": {
+                "all": true
             }
         },
         "bundle": {
-            "identifier": "charts"
+            "identifier": "charts",
+            "icon": [
+                "icons/icon.png",
+                "icons/icon.ico"
+            ]
         },
         "windows": [
             {
