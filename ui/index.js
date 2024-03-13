@@ -106,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
             persons.appendChild(leftchat)
             const path = join(resDir, event.payload.path)
             path.then(async(p) => {
-                console.log(p)
                 const contents = await readBinaryFile(p)
                 const blob = new Blob([contents])
                 const src = URL.createObjectURL(blob)
@@ -166,10 +165,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })
     head.addEventListener('click', () => {
+        const img = dialog.querySelector('img')
+        img.src = head.src
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
         adminBtn.addEventListener('click', () => {
-            const img = dialog.querySelector('img')
             head.src = img.src
             const input = document.querySelector('input')
             invoke('set_admin_info', { name: input.value, img: imgPath })
