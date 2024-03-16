@@ -16,7 +16,23 @@ class Chat extends HTMLElement {
                     const msg = JSON.parse(newVal)
                     this.shadowRoot.querySelector('img').src = msg.src
                     this.shadowRoot.querySelector('span').innerText = msg.head
-                    this.shadowRoot.querySelector('p').innerText = msg.value
+                    if (msg.type === 'text') {
+                        const p = document.createElement('p')
+                        p.innerText = msg.value
+                        const div = this.shadowRoot.getElementById('content')
+                        div.appendChild(p)
+                    } else if (msg.type === 'image') {
+                        const img = document.createElement('img')
+                        img.src = msg.value
+                        const div = this.shadowRoot.getElementById('content')
+                        div.appendChild(img)
+                    } else if (msg.type === 'file') {
+                        const a = document.createElement('a')
+                        a.href = 'file:///' + msg.value
+                        a.innerText = msg.value
+                        const div = this.shadowRoot.getElementById('content')
+                        div.appendChild(a)
+                    }
                 }
                 break
             case 'align':

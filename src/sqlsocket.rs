@@ -19,6 +19,7 @@ struct ModifyHead {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct SendFile {
     id: String,
+    types: String,
     name: String,
     path: String,
 }
@@ -32,9 +33,10 @@ struct SendMsg {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Values {
+    //消息
     Value(String),
-    HeadImg{ status: String, contents: Vec<u8> },
-    FileData{ filename: String, status: String, contents: Vec<u8> }
+    FileData{ filename: String, types: String, status: String, contents: Vec<u8> },
+    HeadImg{ status: String, contents: Vec<u8> }
 }
 #[derive(Debug)]
 struct CusErr {
@@ -132,57 +134,54 @@ impl JsonData {
                     }
                 }
             }
-            "file" => {
-                let name = update_ipaddr(&self.id, &ipstr);
-                if let Values::FileData { filename, status, contents } = &self.values {
-                    let mut curpath = std::env::current_exe()?;
-                    curpath.pop();
-                    curpath.push(filename);
-                    match status.as_str() {
-                        "start" => { let _ = std::fs::File::create(&curpath)?; }
-                        "data" => {
-                            let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
-                            file.write_all(&contents)?;
-                        }
-                        "end" => {
-                            println!("{}", curpath.to_string_lossy().to_string());
-                            handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), name, path: curpath.to_string_lossy().to_string() })?;
-                            let connection = match get_db_connection() {
-                                Ok(connect) => connect,
-                                Err(errstr) => {
-                                    handle.emit_to("main", "error", errstr)?;
-                                    return Ok(())
-                                }
-                            };
-                            let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
-                            let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                            let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, curpath.to_string_lossy().to_string());
-                            connection.execute(query)?;
-                        }
-                        _ => {}
-                    }
-                }
-            }
             "chat" => {
                 let name = update_ipaddr(&self.id, &ipstr);
-                if let Values::Value(strval) = &self.values {
-                    handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: strval.clone() })?;
-                    let connection = match get_db_connection() {
-                        Ok(connect) => connect,
-                        Err(errstr) => {
-                            handle.emit_to("main", "error", errstr)?;
-                            return Ok(())
+                match &self.values {
+                    Values::Value(msg) => {
+                        handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
+                        let connection = match get_db_connection() {
+                            Ok(connect) => connect,
+                            Err(errstr) => {
+                                handle.emit_to("main", "error", errstr)?;
+                                return Ok(())
+                            }
+                        };
+                        let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
+                        let datetime = now.format("%Y-%m-%d %H:%M:%S");
+                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, "text", msg);
+                        connection.execute(query)?;
+                    }
+                    Values::FileData { filename, types, status, contents } => {
+                        let mut curpath = std::env::current_exe()?;
+                        curpath.pop();
+                        curpath.push(filename);
+                        match status.as_str() {
+                            "start" => { let _ = std::fs::File::create(&curpath)?; }
+                            "data" => {
+                                let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
+                                file.write_all(&contents)?;
+                            }
+                            "end" => {
+                                handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: curpath.to_string_lossy().to_string() })?;
+                                let connection = match get_db_connection() {
+                                    Ok(connect) => connect,
+                                    Err(errstr) => {
+                                        handle.emit_to("main", "error", errstr)?;
+                                        return Ok(())
+                                    }
+                                };
+                                let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
+                                let datetime = now.format("%Y-%m-%d %H:%M:%S");
+                                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, types, curpath.to_string_lossy().to_string());
+                                connection.execute(query)?;
+                            }
+                            _ => {}
                         }
-                    };
-                    let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
-                    let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, strval);
-                    connection.execute(query)?;
-                };
+                    }
+                    _ => {}
+                }
             }
-            _ => return Err(Box::new(CusErr {
-                detail: "未匹配".to_owned(),
-            }))
+            _ => {}
         };
         Ok(())
     }
@@ -210,7 +209,7 @@ pub static UUID: once_cell::sync::Lazy<uuid::Uuid> = once_cell::sync::Lazy::new(
     id
 });
 #[tauri::command]
-pub fn get_admin_info() -> String {
+pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     let mut inifile = std::env::current_exe().unwrap();
     inifile.pop();
     inifile.push("conf.ini");
@@ -230,6 +229,10 @@ pub fn get_admin_info() -> String {
             image,
         };
         return serde_json::to_string(&json).unwrap();
+    } else {
+        if let Err(_) = std::fs::File::create(&inifile) {
+            handle.emit_to("main", "error", "用户信息保存失败").unwrap();
+        }
     }
     String::new()
 }
@@ -269,7 +272,7 @@ pub fn get_db_connection() -> Result<sqlite::Connection, String> {
     let query = "CREATE TABLE IF NOT EXISTS userinfo (userid TEXT, name TEXT, ip TEXT, imgpath VARCHAR(200))";
     match connection.execute(query) {
         Ok(()) => {
-            let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, chatmsg VARCHAR(200))";
+            let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, type TEXT, chatmsg VARCHAR(200))";
             match connection.execute(query) {
                 Ok(()) => Ok(connection),
                 Err(_) => Err(String::from("sql语句执行失败!"))
@@ -281,10 +284,15 @@ pub fn get_db_connection() -> Result<sqlite::Connection, String> {
 pub fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     SOCKET.set_broadcast(true)?;
     SOCKET.set_multicast_loop_v4(true)?;
-    let jsondata = get_admin_info();
-    let jsondata = serde_json::from_str(&jsondata);
-    let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
-    let name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
+    let jsondata = get_admin_info(handle.clone());
+    let name;
+    if jsondata.is_empty() {
+        name = JsonData::new(&UUID.to_string(), "name", Values::Value(String::new()));
+    } else {
+        let jsondata = serde_json::from_str(&jsondata);
+        let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
+        name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
+    }
     let data = serde_json::to_string(&name)?;
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {

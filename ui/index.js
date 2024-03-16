@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const msg = {
                     src: event.payload.iself ? head.src : curHead,
                     head: event.payload.name,
+                    type: 'text',
                     value: event.payload.msg
                 }
                 leftchat.setAttribute('message', JSON.stringify(msg))
@@ -116,12 +117,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 leftchat.setAttribute('head', JSON.stringify(msg))
             })
         })
-        await listen('userfile', event => {
+        await listen('userfile', async(event) => {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
+            let src = event.payload.path
+            if (event.payload.types === 'image') {
+                const contents = await readBinaryFile(event.payload.path)
+                const blob = new Blob([contents])
+                src = URL.createObjectURL(blob)
+            }
             const msg = {
+                src: curHead,
                 head: event.payload.name,
-                value: event.payload.path
+                type: event.payload.types,
+                value: src
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
             leftchat.setAttribute('align', 'left')
@@ -134,12 +143,14 @@ document.addEventListener('DOMContentLoaded', () => {
     unlisten()
     const head = document.getElementById('head')
     invoke('get_admin_info').then(async(jsonData) => {
-        const info = JSON.parse(jsonData)
-        head.setAttribute('name', info.name)
-        const contents = await readBinaryFile(info.image)
-        const blob = new Blob([contents])
-        const src = URL.createObjectURL(blob)
-        head.src = src
+        if (jsonData !== "") {
+            const info = JSON.parse(jsonData)
+            head.setAttribute('name', info.name)
+            const contents = await readBinaryFile(info.image)
+            const blob = new Blob([contents])
+            const src = URL.createObjectURL(blob)
+            head.src = src
+        }
     })
     const dialog = document.querySelector('dialog')
     const input = dialog.querySelector('input')
@@ -190,15 +201,15 @@ document.addEventListener('DOMContentLoaded', () => {
         invoke('send_message', { id: curId, datetime: getDateTime(), message: textarea.value })
         const session = document.getElementById('session')
         const chatsession = document.createElement('chat-session')
-        session.appendChild(chatsession)
-        const head = document.getElementById('head')
         const msg = {
             src: head.src,
             head: head.getAttribute('name'),
+            type: 'text',
             value: textarea.value
         }
         chatsession.setAttribute('message', JSON.stringify(msg))
         chatsession.setAttribute('align', 'right')
+        session.appendChild(chatsession)
     })
     const filebtn = document.getElementById('filebtn')
     filebtn.addEventListener('click', () => {
@@ -214,13 +225,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             filePath.then(value => {
                 if (value !== null) {
-                    invoke('send_file', { id: curId, datetime: getDateTime(), path: value })
+                    invoke('send_file', { id: curId, datetime: getDateTime(), types: 'file', path: value })
                     const leftchat = document.createElement('chat-session')
                     session.appendChild(leftchat)
-                    const head = document.getElementById('head')
                     const msg = {
+                        src: head.src,
                         head: head.getAttribute('name'),
-                        value
+                        type: 'file',
+                        value: value
                     }
                     leftchat.setAttribute('message', JSON.stringify(msg))
                     leftchat.setAttribute('align', 'right')
@@ -228,7 +240,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         }
     })
-    /*
     const imgbtn = document.getElementById('imgbtn')
     imgbtn.addEventListener('click', () => {
         let filePath = open({
@@ -241,15 +252,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Array.isArray(filePath)) {
         } else if (filePath === null) {
         } else {
-            filePath.then(value => {
+            filePath.then(async(value) => {
                 if (value !== null) {
-                    invoke('send_img', { id: curId, datetime: getDateTime(), path: value })
+                    invoke('send_file', { id: curId, datetime: getDateTime(), types: 'image', path: value })
+                    const contents = await readBinaryFile(value)
+                    const blob = new Blob([contents])
                     const leftchat = document.createElement('chat-session')
                     session.appendChild(leftchat)
-                    const head = document.getElementById('head')
                     const msg = {
+                        src: head.src,
                         head: head.getAttribute('name'),
-                        value
+                        type: 'image',
+                        value: URL.createObjectURL(blob)
                     }
                     leftchat.setAttribute('message', JSON.stringify(msg))
                     leftchat.setAttribute('align', 'right')
@@ -257,7 +271,6 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         }
     })
-    */
 })
 //关闭默认右键菜单
 window.addEventListener('contextmenu', event => event.preventDefault())

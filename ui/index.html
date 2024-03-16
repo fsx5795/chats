@@ -11,10 +11,10 @@
         <template id="wchat">
             <link rel="stylesheet" href="chatsession.css"/>
             <div id="chat">
-                <img src="head.jpg"/>
+                <img id="userHead"/>
                 <div>
                     <span></span>
-                    <p></p>
+                    <div id="content"></div>
                 </div>
             </div>
         </template>
@@ -48,7 +48,7 @@
             <div id="control">
                 <div>
                     <img id="filebtn" class="rectangle" src="file.png"/>
-                    <!--<img id="imgbtn" class="rectangle" src="picture.png"/>-->
+                    <img id="imgbtn" class="rectangle" src="picture.png"/>
                 </div>
                 <textarea id="inputext"></textarea>
                 <button id="send">发送</button>
