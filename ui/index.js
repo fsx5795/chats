@@ -81,16 +81,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             }
         })
-        await listen('chatstory', event => {
+        await listen('chatstory', async(event) => {
             const session = document.getElementById('session')
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
             //event.payload.id
             const head = document.getElementById('head')
+            let v = event.payload.msg
+            if (event.payload.types === "image") {
+                const contents = await readBinaryFile(event.payload.msg)
+                const blob = new Blob([contents])
+                v = URL.createObjectURL(blob)
+            }
             const msg = {
                 src: event.payload.iself ? head.src : curHead,
                 head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
-                value: event.payload.msg
+                type: event.payload.types,
+                value: v
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
             if (event.payload.iself) {
@@ -145,11 +152,15 @@ document.addEventListener('DOMContentLoaded', () => {
     invoke('get_admin_info').then(async(jsonData) => {
         if (jsonData !== "") {
             const info = JSON.parse(jsonData)
-            head.setAttribute('name', info.name)
-            const contents = await readBinaryFile(info.image)
-            const blob = new Blob([contents])
-            const src = URL.createObjectURL(blob)
-            head.src = src
+            if (info.name !== "") {
+                head.setAttribute('name', info.name)
+            }
+            if (info.image !== "") {
+                const contents = await readBinaryFile(info.image)
+                const blob = new Blob([contents])
+                const src = URL.createObjectURL(blob)
+                head.src = src
+            }
         }
     })
     const dialog = document.querySelector('dialog')

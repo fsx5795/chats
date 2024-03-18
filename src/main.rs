@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::io::{ErrorKind, Read};
+use std::{io::{ErrorKind, Read}, path::PathBuf};
 mod sqlsocket;
 use sqlsocket::Manager;
 //好友信息<id, (ip, name)>
@@ -12,6 +12,7 @@ static mut USERS: once_cell::sync::Lazy<std::collections::HashMap<String, (Strin
 struct Chatstory {
     iself: bool,
     name: String,
+    types: String,
     msg: String,
 }
 #[tauri::command]
@@ -86,15 +87,17 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
                     let query = format!("SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';", id, id);
                     connect.iterate(query, |pairs| {
                         let mut iself = false;
+                        let mut types = String::new();
                         let mut msg = String::new();
                         for &(name, value) in pairs {
-                            if name == "uuid" {
-                                iself = value.unwrap() == sqlsocket::UUID.to_string();
-                            } else if name == "chatmsg" {
-                                msg = value.unwrap().to_owned();
+                            match name {
+                                "uuid" => iself = value.unwrap() == sqlsocket::UUID.to_string(),
+                                "type" => types = value.unwrap().to_owned(),
+                                "chatmsg" => msg = value.unwrap().to_owned(),
+                                _ => {}
                             }
                         }
-                        handle.emit_to("main", "chatstory", Chatstory{ iself, name: value.unwrap().to_string(), msg: msg.to_owned() }).unwrap();
+                        handle.emit_to("main", "chatstory", Chatstory{ iself, name: value.unwrap().to_string(), types, msg: msg.to_owned() }).unwrap();
                         true
                     }).unwrap();
                 }
@@ -130,6 +133,15 @@ fn send_message(id: String, datetime: String, message: String, handle: tauri::Ap
 }
 #[tauri::command]
 fn send_file(id: String, datetime: String, types: String, path: String, handle: tauri::AppHandle) -> () {
+    let mut path = path;
+    if types == "image" {
+        let imgpath = PathBuf::from(&path);
+        let mut curpath = std::env::current_exe().unwrap();
+        curpath.pop();
+        curpath.push(imgpath.file_name().unwrap());
+        std::fs::copy(imgpath, &curpath).unwrap();
+        path = curpath.into_os_string().into_string().unwrap();
+    }
     if !path.is_empty() {
         match std::fs::File::open(&path) {
             Ok(mut file) => {
@@ -138,7 +150,6 @@ fn send_file(id: String, datetime: String, types: String, path: String, handle: 
                         let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
                         connect.iterate(query, |pairs| {
                             for &(_, value) in pairs.iter() {
-                                println!("{}", value.unwrap());
                                 let mut buffer = Vec::new();
                                 file.read_to_end(&mut buffer).unwrap();
                                 let filesour = std::path::PathBuf::from(&path);

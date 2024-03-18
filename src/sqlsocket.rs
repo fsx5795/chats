@@ -149,7 +149,7 @@ impl JsonData {
                         let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
                         let datetime = now.format("%Y-%m-%d %H:%M:%S");
                         let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, "text", msg);
-                        connection.execute(query)?;
+                        connection.execute(query).unwrap();
                     }
                     Values::FileData { filename, types, status, contents } => {
                         let mut curpath = std::env::current_exe()?;
