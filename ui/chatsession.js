@@ -28,6 +28,7 @@ class Chat extends HTMLElement {
                         const img = document.createElement('img')
                         img.src = URL.createObjectURL(blob)
                         img.style.maxWidth = '500px'
+                        img.onclick = () => invoke('display_image', { path: msg.value })
                         const div = this.shadowRoot.getElementById('content')
                         div.appendChild(img)
                     } else if (msg.type === 'file') {
