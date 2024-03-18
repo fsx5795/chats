@@ -9,27 +9,32 @@ class Chat extends HTMLElement {
     static get observedAttributes() {
         return ['message', 'align', 'textwidth']
     }
-    attributeChangedCallback(name, _oldVal, newVal) {
+    async attributeChangedCallback(name, _oldVal, newVal) {
         switch (name) {
             case 'message':
                 if (newVal) {
                     const msg = JSON.parse(newVal)
                     this.shadowRoot.querySelector('img').src = msg.src
                     this.shadowRoot.querySelector('span').innerText = msg.head
+                    const { invoke } = window.__TAURI__.tauri
                     if (msg.type === 'text') {
                         const p = document.createElement('p')
                         p.innerText = msg.value
                         const div = this.shadowRoot.getElementById('content')
                         div.appendChild(p)
                     } else if (msg.type === 'image') {
+                        const contents = await readBinaryFile(msg.value)
+                        const blob = new Blob([contents])
                         const img = document.createElement('img')
-                        img.src = msg.value
+                        img.src = URL.createObjectURL(blob)
+                        img.style.maxWidth = '500px'
                         const div = this.shadowRoot.getElementById('content')
                         div.appendChild(img)
                     } else if (msg.type === 'file') {
                         const a = document.createElement('a')
-                        a.href = 'file:///' + msg.value
+                        a.href = 'javascript:void(0)'
                         a.innerText = msg.value
+                        a.onclick = () => invoke('show_file', { path: msg.value })
                         const div = this.shadowRoot.getElementById('content')
                         div.appendChild(a)
                     }

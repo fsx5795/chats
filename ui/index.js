@@ -85,19 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const session = document.getElementById('session')
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
-            //event.payload.id
             const head = document.getElementById('head')
-            let v = event.payload.msg
-            if (event.payload.types === "image") {
-                const contents = await readBinaryFile(event.payload.msg)
-                const blob = new Blob([contents])
-                v = URL.createObjectURL(blob)
-            }
             const msg = {
                 src: event.payload.iself ? head.src : curHead,
                 head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
                 type: event.payload.types,
-                value: v
+                value: event.payload.msg
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
             if (event.payload.iself) {

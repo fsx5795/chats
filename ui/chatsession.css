@@ -26,3 +26,6 @@ p {
     word-wrap: break-word;
     word-break: break-all;
 }
+a:link {
+    color: fuchsia;
+}
