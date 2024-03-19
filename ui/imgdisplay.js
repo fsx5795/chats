@@ -1,14 +1,15 @@
-const { listen } = window.__TAURI__.event
 document.addEventListener('DOMContentLoaded', () => {
+    const { listen } = window.__TAURI__.event
     const unlisten = async() => {
         await listen('showimg', async(event) => {
-            console.log("----------------------")
-            console.log(event.payload)
-            const contents = await readBinaryFile(event.payload)
-            const blob = new Blob([contents])
             const img = document.querySelector('img')
-            img.src = URL.createObjectURL(blob)
+            img.src = event.payload.image
+            const tauriWindow = window.__TAURI__.window
+            tauriWindow.getCurrent().show()
         })
     }
     unlisten()
+    const { WebviewWindow } = window.__TAURI__.window
+    const w = WebviewWindow.getByLabel('main')
+    w.emit('getimg')
 })

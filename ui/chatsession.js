@@ -28,7 +28,25 @@ class Chat extends HTMLElement {
                         const img = document.createElement('img')
                         img.src = URL.createObjectURL(blob)
                         img.style.maxWidth = '500px'
-                        img.onclick = () => invoke('display_image', { path: msg.value })
+                        img.onclick = () => {
+                            const { WebviewWindow } = window.__TAURI__.window
+                            const imgdisplay = WebviewWindow.getByLabel('imgdisplay')
+                            if (imgdisplay === null) {
+                                const w = new WebviewWindow('imgdisplay', { url: 'imgdisplay.html', visible: false })
+                                const { listen } = window.__TAURI__.event
+                                const unlisten = async() => {
+                                    await listen('getimg', () => {
+                                        w.emit('showimg', { image: img.src })
+                                    })
+                                }
+                                unlisten()
+                                //w.once('tauri://created', () => { w.hide() })
+                                w.once('tauri://error', e => {
+                                    console.error(e.payload)
+                                    console.log(e)
+                                })
+                            }
+                        }
                         const div = this.shadowRoot.getElementById('content')
                         div.appendChild(img)
                     } else if (msg.type === 'file') {

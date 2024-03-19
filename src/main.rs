@@ -16,19 +16,6 @@ struct Chatstory {
     msg: String,
 }
 #[tauri::command]
-async fn display_image(path: String, app: tauri::AppHandle) -> () {
-    tauri::WindowBuilder::new(&app, "imgdisplay", tauri::WindowUrl::App("imgdisplay.html".parse().unwrap()))
-        //.decorations(false)
-        //.always_on_top(true)
-        .theme(Some(tauri::Theme::Dark))
-        //.visible(false)
-        .build().unwrap();
-    //std::thread::sleep(std::time::Duration::from_secs(5));
-    app.emit_to("imgdisplay", "showimg", path).unwrap();
-    #[cfg(debug_assertions)]
-    app.get_window("imgdisplay").unwrap().open_devtools();
-}
-#[tauri::command]
 async fn close_splashscreen(window: tauri::Window) -> () {
     //std::thread::sleep(std::time::Duration::from_micros(500_000));
     std::thread::sleep(std::time::Duration::from_secs(1));
@@ -224,7 +211,7 @@ fn main() -> () {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![display_image, close_splashscreen, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
