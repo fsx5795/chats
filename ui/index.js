@@ -232,6 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatsession.setAttribute('message', JSON.stringify(msg))
         chatsession.setAttribute('align', 'right')
         session.appendChild(chatsession)
+        textarea.value = ''
     })
     const filebtn = document.getElementById('filebtn')
     filebtn.addEventListener('click', () => {
