@@ -31,7 +31,14 @@
             }
         },
         "bundle": {
+            "active": true,
+            "targets": "all",
             "identifier": "charts",
+            "windows": {
+                "webviewInstallMode": {
+                    "type": "offlineInstaller"
+                }
+            },
             "icon": [
                 "icons/icon.png",
                 "icons/icon.ico"
