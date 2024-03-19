@@ -13,6 +13,12 @@ body > div {
     display: inline-block;
     height: 100vh;
 }
+div {
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-sizing: border-box;
+}
 /*最左侧的工具栏，包括用户头像会话按钮和联系人按钮*/
 #tools {
     width: 50px;
@@ -51,8 +57,16 @@ body > div {
 */
 /*右侧聊天窗口*/
 #chats {
-    background-color: rgb(17, 17, 17);
     flex: 1;
+}
+#bgdiv {
+    background-color: rgb(17, 17, 17);
+    width: 100%;
+    height: 100vh;
+}
+#chatinfo {
+    width: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
 }

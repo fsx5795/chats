@@ -181,6 +181,14 @@ impl JsonData {
                     _ => {}
                 }
             }
+            "events" => {
+                update_ipaddr(&self.id, &ipstr);
+                if let Values::Value(msg) = &self.values {
+                    if msg == "closed" {
+                        handle.emit_to("main", "exited", self.id.to_string()).unwrap();
+                    }
+                }
+            }
             _ => {}
         };
         Ok(())

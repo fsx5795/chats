@@ -90,7 +90,6 @@ fn get_chats_history(id: String, handle: tauri::AppHandle) -> () {
                         let mut types = String::new();
                         let mut msg = String::new();
                         for &(name, value) in pairs {
-                            println!("{}:{}", name, value.unwrap());
                             match name {
                                 "uuid" => iself = value.unwrap() == sqlsocket::UUID.to_string(),
                                 "type" => types = value.unwrap().to_owned(),
@@ -189,6 +188,12 @@ fn show_file(path : String) -> () {
     path.pop();
     std::process::Command::new("explorer.exe").arg(path).spawn().unwrap();
 }
+#[tauri::command]
+fn close_window() -> () {
+    let send_data = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "events", sqlsocket::Values::Value("closed".to_owned()));
+    let data = serde_json::to_string(&send_data).unwrap();
+    sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
+}
 fn main() -> () {
     let quit = tauri::CustomMenuItem::new("quit".to_owned(), "关闭窗口");
     let hide = tauri::CustomMenuItem::new("hide".to_owned(), "隐藏窗口");
@@ -211,7 +216,7 @@ fn main() -> () {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

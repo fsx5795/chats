@@ -14,7 +14,6 @@ class Person extends HTMLElement {
             case 'head':
                 if (newVal) {
                     const msg = JSON.parse(newVal)
-                    console.log(msg.value)
                     this.shadowRoot.querySelector('img').src = msg.value
                 }
                 break
