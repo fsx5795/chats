@@ -95,11 +95,8 @@ impl JsonData {
                             return Ok(())
                         }
                     };
-                    /*
-                    unsafe {
-                        USERS.insert(self.id.clone(), (addr.to_string(), strval.clone()));
-                    }
-                    */
+                    let data = get_admin_info_json(handle.clone());
+                    SOCKET.send_to(&data.into_bytes(), addr).unwrap();
                 };
             }
             "headimg" => {
@@ -244,6 +241,18 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     }
     String::new()
 }
+fn get_admin_info_json(handle: tauri::AppHandle) -> String {
+    let jsondata = get_admin_info(handle);
+    let name;
+    if jsondata.is_empty() {
+        name = JsonData::new(&UUID.to_string(), "name", Values::Value(String::new()));
+    } else {
+        let jsondata = serde_json::from_str(&jsondata);
+        let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
+        name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
+    }
+    serde_json::to_string(&name).unwrap()
+}
 pub fn update_ipaddr(id: &str, ip: &str) -> String {
     let mut name = String::new();
     if let Ok(connect) = get_db_connection() {
@@ -292,16 +301,7 @@ pub fn get_db_connection() -> Result<sqlite::Connection, String> {
 pub fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
     SOCKET.set_broadcast(true)?;
     SOCKET.set_multicast_loop_v4(true)?;
-    let jsondata = get_admin_info(handle.clone());
-    let name;
-    if jsondata.is_empty() {
-        name = JsonData::new(&UUID.to_string(), "name", Values::Value(String::new()));
-    } else {
-        let jsondata = serde_json::from_str(&jsondata);
-        let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
-        name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
-    }
-    let data = serde_json::to_string(&name)?;
+    let data = get_admin_info_json(handle.clone());
     SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {
         let mut buf = [0; 2048];
