@@ -13,12 +13,9 @@ function getDateTime() {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 document.addEventListener('DOMContentLoaded', () => {
+    const chatInfo = document.getElementById('chatinfo')
+    chatInfo.style.display = 'none'
     const { invoke } = window.__TAURI__.tauri
-    /*
-    const tauriWindow = window.__TAURI__.window
-    console.log(tauriWindow.getAll())
-    console.log(tauriWindow.getCurrent())
-    */
     invoke('close_splashscreen')
     const { listen } = window.__TAURI__.event
     const unlisten = async() => {
@@ -45,6 +42,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         p.setAttribute('bgcolor', 'nomal')
                     })
                     chatperson.setAttribute('bgcolor', 'pressed')
+                    const chatInfo = document.getElementById('chatinfo')
+                    if (chatInfo.style.display === 'none') {
+                        chatInfo.style.display = ''
+                        document.getElementById('bgdiv').style.display = 'none'
+                    }
                     const session = document.getElementById('session')
                     session.querySelectorAll('chat-session').forEach(chat => {
                         session.removeChild(chat)
@@ -138,6 +140,22 @@ document.addEventListener('DOMContentLoaded', () => {
         await listen('error', event => {
             const { message } = window.__TAURI__.dialog
             message(event.payload, { title: '警告', type: 'error' })
+        })
+        await listen('exited', event => {
+            const persons = document.getElementById('persons')
+            persons.querySelectorAll('chat-persons').forEach(p => {
+                if (p.getAttribute('userId') === event.payload) {
+                    persons.removeChild(p)
+                    if (curId === event.payload) {
+                        const bgdiv = document.getElementById('bgdiv')
+                        if (bgdiv.style.display === 'none') {
+                            bgdiv.style.display = ''
+                            document.getElementById('chatinfo').style.display = 'none'
+                        }
+                        curId = ''
+                    }
+                }
+            })
         })
     }
     unlisten()
@@ -283,4 +301,11 @@ window.addEventListener('resize', () => {
     chats.forEach(chat => {
         chat.setAttribute('textwidth', document.getElementById('chats').offsetWidth - 500)
     })
+})
+const tauriWindow = window.__TAURI__.window
+const { TauriEvent } = window.__TAURI__.event
+tauriWindow.getCurrent().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, () => {
+    const { invoke } = window.__TAURI__.tauri
+    invoke('close_window')
+    window.close()
 })
