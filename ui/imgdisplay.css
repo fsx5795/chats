@@ -1,0 +1,9 @@
+@import url(share.css);
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+img {
+    object-fit: none;
+}
