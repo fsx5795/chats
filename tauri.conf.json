@@ -31,9 +31,7 @@
             }
         },
         "bundle": {
-            "active": true,
-            "targets": "all",
-            "identifier": "charts",
+            "identifier": "chats",
             "windows": {
                 "webviewInstallMode": {
                     "type": "offlineInstaller"
@@ -47,7 +45,7 @@
         "windows": [
             {
                 "label": "main",
-                "title": "charts",
+                "title": "chats",
                 "minWidth": 800,
                 "minHeight": 600,
                 "theme": "Dark",

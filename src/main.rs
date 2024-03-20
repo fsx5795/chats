@@ -52,7 +52,7 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle) -> () {
     section.insert("name".to_owned(), name.to_owned());
     let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "name", sqlsocket::Values::Value(name));
     let data = serde_json::to_string(&sendmsg).unwrap();
-    sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
+    sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
     if !img.is_empty() {
         let mut imgfile = curpath;
         let imgsour = std::path::PathBuf::from(img);
@@ -61,17 +61,22 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle) -> () {
         let mut file = std::fs::File::open(&imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
-        let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
-        let data = serde_json::to_string(&sendmsg).unwrap();
-        sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
-        for chunk in filedata.chunks(512) {
-            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+        std::thread::spawn(move || {
+            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
             let data = serde_json::to_string(&sendmsg).unwrap();
-            sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
-        }
-        let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
-        let data = serde_json::to_string(&sendmsg).unwrap();
-        sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
+            sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            for chunk in filedata.chunks(512) {
+                std::thread::sleep(std::time::Duration::from_micros(500_000));
+                let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+                let data = serde_json::to_string(&sendmsg).unwrap();
+                sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_micros(500_000));
+            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
+            let data = serde_json::to_string(&sendmsg).unwrap();
+            sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            println!("end");
+        });
         section.insert("image".to_owned(), imgfile.to_string_lossy().to_string());
     }
     conf.write_to_file(inifile).unwrap();
@@ -150,6 +155,7 @@ fn send_file(id: String, datetime: String, types: String, path: String, handle: 
                         let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
                         connect.iterate(query, |pairs| {
                             for &(_, value) in pairs.iter() {
+                                println!("{}", value.unwrap());
                                 let mut buffer = Vec::new();
                                 file.read_to_end(&mut buffer).unwrap();
                                 let filesour = std::path::PathBuf::from(&path);
@@ -192,7 +198,7 @@ fn show_file(path : String) -> () {
 fn close_window() -> () {
     let send_data = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "events", sqlsocket::Values::Value("closed".to_owned()));
     let data = serde_json::to_string(&send_data).unwrap();
-    sqlsocket::SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" }).unwrap();
+    sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
 fn main() -> () {
     let quit = tauri::CustomMenuItem::new("quit".to_owned(), "关闭窗口");
@@ -216,7 +222,7 @@ fn main() -> () {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::load_finish, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

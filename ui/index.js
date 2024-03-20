@@ -102,21 +102,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
         await listen('userhead', async(event) => {
-            const { resourceDir, join } = window.__TAURI__.path
-            const resDir = await resourceDir()
-            const leftchat = document.createElement('chat-persons')
             const persons = document.getElementById('persons')
-            persons.appendChild(leftchat)
-            const path = join(resDir, event.payload.path)
-            path.then(async(p) => {
-                const contents = await readBinaryFile(p)
-                const blob = new Blob([contents])
-                const src = URL.createObjectURL(blob)
-                curHead = src
-                const msg = {
-                    value: src
+            persons.querySelectorAll('chat-persons').forEach(async(p) => {
+                if (p.getAttribute('userId') === event.payload.id) {
+                    const contents = await readBinaryFile(event.payload.path)
+                    const blob = new Blob([contents])
+                    const src = URL.createObjectURL(blob)
+                    curHead = src
+                    const msg = {
+                        value: src
+                    }
+                    p.setAttribute('head', JSON.stringify(msg))
                 }
-                leftchat.setAttribute('head', JSON.stringify(msg))
             })
         })
         await listen('userfile', async(event) => {
@@ -173,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 head.src = src
             }
         }
+        invoke('load_finish')
     })
     const dialog = document.querySelector('dialog')
     const input = dialog.querySelector('input')
@@ -202,13 +200,15 @@ document.addEventListener('DOMContentLoaded', () => {
         img.src = head.src
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
-        adminBtn.addEventListener('click', () => {
+        //adminBtn.addEventListener('click', () => {
+        adminBtn.onclick = () => {
             head.src = img.src
             const input = document.querySelector('input')
             invoke('set_admin_info', { name: input.value, img: imgPath })
             head.setAttribute('name', input.value)
             dialog.close()
-        })
+            adminBtn.onclick = null
+        }
         dialog.showModal()
     })
     //点击对话框以外的区域关闭对话框

@@ -70,6 +70,7 @@ impl JsonData {
         }
     }
     fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+        static mut IDS: Vec<String> = Vec::new();
         match self.types.as_str() {
             //联系人上线或修改用户名
             "name" => {
@@ -81,7 +82,7 @@ impl JsonData {
                             let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", self.id);
                             connect.iterate(query, |_| {
                                 b = false;
-                                let query = format!("UPDATE userinfo SET userid = '{}', name = '{}', ip = '{}';", self.id, strval, addr);
+                                let query = format!("UPDATE userinfo SET name = '{}', ip = '{}' WHERE userid = '{}';", strval, addr, self.id);
                                 connect.execute(query).unwrap();
                                 true
                             }).unwrap();
@@ -95,12 +96,16 @@ impl JsonData {
                             return Ok(())
                         }
                     };
-                    let data = get_admin_info_json(handle.clone());
-                    SOCKET.send_to(&data.into_bytes(), addr).unwrap();
+                    unsafe {
+                        if !IDS.contains(&self.id) {
+                            IDS.push(self.id.clone());
+                            let data = get_admin_info_json(handle.clone());
+                            SOCKET.send_to(&data.into_bytes(), addr).unwrap();
+                        }
+                    }
                 };
             }
             "headimg" => {
-                update_ipaddr(&self.id, &ipstr);
                 if let Values::HeadImg{status, contents} = &self.values {
                     let mut curpath = std::env::current_exe()?;
                     curpath.pop();
@@ -112,8 +117,7 @@ impl JsonData {
                             file.write_all(&contents)?;
                         }
                         "end" => {
-                            handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: self.id.clone() })?;
-                            /*
+                            handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() })?;
                             let connection = match get_db_connection() {
                                 Ok(connect) => connect,
                                 Err(errstr) => {
@@ -121,11 +125,9 @@ impl JsonData {
                                     return Ok(())
                                 }
                             };
-                            let now: DateTime<Local> = chrono::Local::now();
-                            let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                            let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, chatmsg) VALUES ('{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, curpath.to_string_lossy().to_string());
+                            let query = format!("UPDATE userinfo SET ip = '{}', imgpath = '{}' WHERE userid = '{}';", ipstr, curpath.to_string_lossy().to_string(), self.id);
+                            println!("{query}");
                             connection.execute(query)?;
-                            */
                         }
                         _ => {}
                     }
@@ -183,6 +185,9 @@ impl JsonData {
                 if let Values::Value(msg) = &self.values {
                     if msg == "closed" {
                         handle.emit_to("main", "exited", self.id.to_string()).unwrap();
+                        unsafe {
+                            IDS.retain(|item| *item != self.id);
+                        }
                     }
                 }
             }
@@ -192,7 +197,14 @@ impl JsonData {
     }
 }
 pub static SOCKET: once_cell::sync::Lazy<std::net::UdpSocket> = once_cell::sync::Lazy::new(|| {
-    std::net::UdpSocket::bind("0.0.0.0:9527").unwrap()
+    let socket = std::net::UdpSocket::bind("0.0.0.0:9527").unwrap();
+    let multiaddr = std::net::Ipv4Addr::new(234, 0, 0, 0);
+    let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
+    socket.join_multicast_v4(&multiaddr, &interface).unwrap();
+    socket.set_broadcast(true).unwrap();
+    socket.set_multicast_loop_v4(false).unwrap();
+    socket.set_multicast_loop_v6(false).unwrap();
+    socket
 });
 pub static UUID: once_cell::sync::Lazy<uuid::Uuid> = once_cell::sync::Lazy::new(|| {
     let mut inifile = std::env::current_exe().unwrap();
@@ -213,6 +225,11 @@ pub static UUID: once_cell::sync::Lazy<uuid::Uuid> = once_cell::sync::Lazy::new(
     conf.write_to_file(inifile).unwrap();
     id
 });
+#[tauri::command]
+pub fn load_finish(handle: tauri::AppHandle) -> () {
+    let data = get_admin_info_json(handle);
+    SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+}
 #[tauri::command]
 pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     let mut inifile = std::env::current_exe().unwrap();
@@ -238,6 +255,10 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
         if let Err(_) = std::fs::File::create(&inifile) {
             handle.emit_to("main", "error", "用户信息保存失败").unwrap();
         }
+        let id = uuid::Uuid::new_v4();
+        let mut conf = ini::Ini::new();
+        conf.with_section(Some("Admin")).set("id", id);
+        conf.write_to_file(inifile).unwrap();
     }
     String::new()
 }
@@ -260,7 +281,7 @@ pub fn update_ipaddr(id: &str, ip: &str) -> String {
         connect.iterate(query, |pairs| {
             for &(colname, value) in pairs.iter() {
                 if colname == "ip" && value.unwrap() !=  ip.to_owned() {
-                    let query = format!("UPDATE userinfo SET userid = '{}', ip = '{}';", id, ip);
+                    let query = format!("UPDATE userinfo SET ip = '{}' WHERE userid = '{}';", ip, id);
                     connect.execute(query).unwrap();
                 }
                 if colname == "name" {
@@ -299,10 +320,6 @@ pub fn get_db_connection() -> Result<sqlite::Connection, String> {
     }
 }
 pub fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
-    SOCKET.set_broadcast(true)?;
-    SOCKET.set_multicast_loop_v4(true)?;
-    let data = get_admin_info_json(handle.clone());
-    SOCKET.send_to(&data.into_bytes(), if cfg!(debug_assertions) { "255.255.255.255:8080" } else { "255.255.255.255:9527" })?;
     loop {
         let mut buf = [0; 2048];
         let (amt, addr) = SOCKET.recv_from(&mut buf)?;
@@ -317,9 +334,6 @@ pub fn init_socket(handle: tauri::AppHandle) -> std::io::Result<()> {
             continue;
         }
         let jsonvalue = jsonvalue?;
-        let ipstr = addr.to_string();
-        let pos = ipstr.find(':').unwrap();
-        let ipstr = &ipstr[..pos];
-        jsonvalue.anaslysis(ipstr, &addr, &handle).unwrap();
+        jsonvalue.anaslysis(&addr.to_string(), &addr, &handle).unwrap();
     }
 }
