@@ -185,7 +185,7 @@ pub static SOCKET: once_cell::sync::Lazy<std::net::UdpSocket> = once_cell::sync:
     let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
     socket.join_multicast_v4(&multiaddr, &interface).unwrap();
     socket.set_multicast_loop_v4(false).unwrap();
-    socket.set_multicast_loop_v6(false).unwrap();
+    //socket.set_multicast_loop_v6(false).unwrap();
     socket
 });
 pub static UUID: once_cell::sync::Lazy<uuid::Uuid> = once_cell::sync::Lazy::new(|| {

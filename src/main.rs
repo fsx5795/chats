@@ -102,7 +102,7 @@ fn get_chats_history(id: String, handle: tauri::AppHandle, state: tauri::State<C
     }).unwrap();
 }
 #[tauri::command]
-fn send_message(id: String, datetime: String, message: String, handle: tauri::AppHandle, state: tauri::State<CusState>) -> () {
+fn send_message(id: String, datetime: String, message: String, state: tauri::State<CusState>) -> () {
     let send_data = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "chat", sqlsocket::Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     let connect = state.0.lock().unwrap();
@@ -117,7 +117,7 @@ fn send_message(id: String, datetime: String, message: String, handle: tauri::Ap
     connect.execute(query).unwrap();
 }
 #[tauri::command]
-fn send_file(id: String, datetime: String, types: String, path: String, handle: tauri::AppHandle, state: tauri::State<CusState>) -> () {
+fn send_file(id: String, datetime: String, types: String, path: String, state: tauri::State<CusState>) -> () {
     let mut path = path;
     if types == "image" {
         let imgpath = PathBuf::from(&path);
