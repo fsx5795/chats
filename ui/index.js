@@ -119,17 +119,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await listen('userfile', async(event) => {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
-            let src = event.payload.path
-            if (event.payload.types === 'image') {
-                const contents = await readBinaryFile(event.payload.path)
-                const blob = new Blob([contents])
-                src = URL.createObjectURL(blob)
-            }
             const msg = {
                 src: curHead,
                 head: event.payload.name,
                 type: event.payload.types,
-                value: src
+                value: event.payload.path
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
             leftchat.setAttribute('align', 'left')
@@ -200,7 +194,6 @@ document.addEventListener('DOMContentLoaded', () => {
         img.src = head.src
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
-        //adminBtn.addEventListener('click', () => {
         adminBtn.onclick = () => {
             head.src = img.src
             const input = document.querySelector('input')
@@ -275,18 +268,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Array.isArray(filePath)) {
         } else if (filePath === null) {
         } else {
-            filePath.then(async(value) => {
+            //filePath.then(async(value) => {
+            filePath.then(value => {
                 if (value !== null) {
                     invoke('send_file', { id: curId, datetime: getDateTime(), types: 'image', path: value })
-                    const contents = await readBinaryFile(value)
-                    const blob = new Blob([contents])
                     const leftchat = document.createElement('chat-session')
                     session.appendChild(leftchat)
                     const msg = {
                         src: head.src,
                         head: head.getAttribute('name'),
                         type: 'image',
-                        value: URL.createObjectURL(blob)
+                        value: value
                     }
                     leftchat.setAttribute('message', JSON.stringify(msg))
                     leftchat.setAttribute('align', 'right')
