@@ -12,7 +12,6 @@ serde = "*"
 serde_json = "*"
 rust-ini = "*"
 sqlite = "*"
-once_cell = "*"
 uuid = "*"
 chrono = "*"
 
