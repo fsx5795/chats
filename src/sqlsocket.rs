@@ -77,10 +77,10 @@ impl JsonData {
                 if let Values::Value(strval) = &self.values {
                     handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), })?;
                     let mut nothas = true;
+                    let mut same = true;
                     let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", self.id);
                     connection.lock().unwrap().iterate(query, |pairs| {
                         nothas = false;
-                        let mut same = true;
                         for &(name, value) in pairs.iter() {
                             if name == "name" && value.unwrap() != strval {
                                 same = false;
@@ -91,12 +91,12 @@ impl JsonData {
                                 break;
                             }
                         }
-                        if !same {
-                            let query = format!("UPDATE userinfo SET name = '{}', ip = '{}' WHERE userid = '{}';", strval, addr, self.id);
-                            connection.lock().unwrap().execute(query).unwrap();
-                        }
                         true
                     }).unwrap();
+                    if !same {
+                        let query = format!("UPDATE userinfo SET name = '{}', ip = '{}' WHERE userid = '{}';", strval, addr, self.id);
+                        connection.lock().unwrap().execute(query).unwrap();
+                    }
                     if nothas {
                         let query = format!("INSERT INTO userinfo (userid, name, ip) VALUES ('{}', '{}', '{}');", self.id, strval, addr);
                         connection.lock().unwrap().execute(query).unwrap();
@@ -138,7 +138,7 @@ impl JsonData {
                                 s.spawn(move || {
                                     let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                     unsafe {
-                                        while FILEDATAS.get().unwrap().len() > 0 {
+                                        while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
                                             file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                         }
                                         FILEDATAS.get_mut().unwrap().remove(&cp);
@@ -191,7 +191,7 @@ impl JsonData {
                                     s.spawn(move || {
                                         let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                         unsafe {
-                                            while FILEDATAS.get().unwrap().len() > 0 {
+                                            while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
                                                 file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                             }
                                             FILEDATAS.get_mut().unwrap().remove(&cp);
@@ -228,7 +228,7 @@ impl JsonData {
 }
 pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
 #[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
+pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
     let data = get_admin_info_json(handle, &uid);
     socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
@@ -293,7 +293,6 @@ pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mut
         }
         true
     }).unwrap();
-    println!("{name}");
     name
 }
 pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: std::sync::Arc<uuid::Uuid>, socket: std::sync::Arc<std::net::UdpSocket>) -> std::io::Result<()> {
