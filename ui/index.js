@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 permissionGranted = permission === 'granted'
             }
             if (permissionGranted) {
-                invoke('get_user_name', { id: curId }).then(name => {
+                invoke('get_user_name', { id: event.payload.id }).then(name => {
                     sendNotification({ title: name, body: '发来一条消息' })
                 })
             }
@@ -102,37 +102,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
         await listen('userhead', async(event) => {
-            const { resourceDir, join } = window.__TAURI__.path
-            const resDir = await resourceDir()
-            const leftchat = document.createElement('chat-persons')
             const persons = document.getElementById('persons')
-            persons.appendChild(leftchat)
-            const path = join(resDir, event.payload.path)
-            path.then(async(p) => {
-                const contents = await readBinaryFile(p)
-                const blob = new Blob([contents])
-                const src = URL.createObjectURL(blob)
-                curHead = src
-                const msg = {
-                    value: src
+            persons.querySelectorAll('chat-persons').forEach(async(p) => {
+                if (p.getAttribute('userId') === event.payload.id) {
+                    const contents = await readBinaryFile(event.payload.path)
+                    const blob = new Blob([contents])
+                    const src = URL.createObjectURL(blob)
+                    curHead = src
+                    const msg = {
+                        value: src
+                    }
+                    p.setAttribute('head', JSON.stringify(msg))
                 }
-                leftchat.setAttribute('head', JSON.stringify(msg))
             })
         })
         await listen('userfile', async(event) => {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
-            let src = event.payload.path
-            if (event.payload.types === 'image') {
-                const contents = await readBinaryFile(event.payload.path)
-                const blob = new Blob([contents])
-                src = URL.createObjectURL(blob)
-            }
             const msg = {
                 src: curHead,
                 head: event.payload.name,
                 type: event.payload.types,
-                value: src
+                value: event.payload.path
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
             leftchat.setAttribute('align', 'left')
@@ -173,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 head.src = src
             }
         }
+        invoke('load_finish')
     })
     const dialog = document.querySelector('dialog')
     const input = dialog.querySelector('input')
@@ -202,13 +194,14 @@ document.addEventListener('DOMContentLoaded', () => {
         img.src = head.src
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
-        adminBtn.addEventListener('click', () => {
+        adminBtn.onclick = () => {
             head.src = img.src
             const input = document.querySelector('input')
             invoke('set_admin_info', { name: input.value, img: imgPath })
             head.setAttribute('name', input.value)
             dialog.close()
-        })
+            adminBtn.onclick = null
+        }
         dialog.showModal()
     })
     //点击对话框以外的区域关闭对话框
@@ -275,18 +268,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Array.isArray(filePath)) {
         } else if (filePath === null) {
         } else {
-            filePath.then(async(value) => {
+            //filePath.then(async(value) => {
+            filePath.then(value => {
                 if (value !== null) {
                     invoke('send_file', { id: curId, datetime: getDateTime(), types: 'image', path: value })
-                    const contents = await readBinaryFile(value)
-                    const blob = new Blob([contents])
                     const leftchat = document.createElement('chat-session')
                     session.appendChild(leftchat)
                     const msg = {
                         src: head.src,
                         head: head.getAttribute('name'),
                         type: 'image',
-                        value: URL.createObjectURL(blob)
+                        value: value
                     }
                     leftchat.setAttribute('message', JSON.stringify(msg))
                     leftchat.setAttribute('align', 'right')
