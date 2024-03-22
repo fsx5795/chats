@@ -69,7 +69,7 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>) -> Result<(), Box<dyn std::error::Error>> {
+    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: &std::sync::Arc<uuid::Uuid>, socket: &std::sync::Arc<std::net::UdpSocket>) -> Result<(), Box<dyn std::error::Error>> {
         static mut IDS: Vec<String> = Vec::new();
         match self.types.as_str() {
             //联系人上线或修改用户名
@@ -104,8 +104,8 @@ impl JsonData {
                     unsafe {
                         if !IDS.contains(&self.id) {
                             IDS.push(self.id.clone());
-                            let data = get_admin_info_json(handle.clone());
-                            SOCKET.send_to(&data.into_bytes(), addr).unwrap();
+                            let data = get_admin_info_json(handle.clone(), &uid);
+                            socket.send_to(&data.into_bytes(), addr).unwrap();
                         }
                     }
                 };
@@ -137,7 +137,7 @@ impl JsonData {
                         handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
                         let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
                         let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, "text", msg);
+                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, uid.to_owned(), datetime, "text", msg);
                         connection.lock().unwrap().execute(query).unwrap();
                     }
                     Values::FileData { filename, types, status, contents } => {
@@ -154,7 +154,7 @@ impl JsonData {
                                 handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: curpath.to_string_lossy().to_string() })?;
                                 let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
                                 let datetime = now.format("%Y-%m-%d %H:%M:%S");
-                                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, UUID.to_owned(), datetime, types, curpath.to_string_lossy().to_string());
+                                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, uid.to_owned(), datetime, types, curpath.to_string_lossy().to_string());
                                 connection.lock().unwrap().execute(query)?;
                             }
                             _ => {}
@@ -179,38 +179,10 @@ impl JsonData {
         Ok(())
     }
 }
-pub static SOCKET: once_cell::sync::Lazy<std::net::UdpSocket> = once_cell::sync::Lazy::new(|| {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:9527").unwrap();
-    let multiaddr = std::net::Ipv4Addr::new(234, 0, 0, 0);
-    let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
-    socket.join_multicast_v4(&multiaddr, &interface).unwrap();
-    socket.set_multicast_loop_v4(false).unwrap();
-    //socket.set_multicast_loop_v6(false).unwrap();
-    socket
-});
-pub static UUID: once_cell::sync::Lazy<uuid::Uuid> = once_cell::sync::Lazy::new(|| {
-    let mut inifile = std::env::current_exe().unwrap();
-    inifile.pop();
-    inifile.push("conf.ini");
-    if inifile.exists() {
-        let i = ini::Ini::load_from_file(&inifile).unwrap();
-        for (_, prop) in &i {
-            let res = prop.iter().find(|&(k, _)| k == "id");
-            if let Some((_, v)) = res {
-                return uuid::Uuid::parse_str(v).unwrap();
-            };
-        }
-    }
-    let id = uuid::Uuid::new_v4();
-    let mut conf = ini::Ini::new();
-    conf.with_section(Some("Admin")).set("id", id);
-    conf.write_to_file(inifile).unwrap();
-    id
-});
 #[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle) -> () {
-    let data = get_admin_info_json(handle);
-    SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
+    let data = get_admin_info_json(handle, &uid);
+    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
 #[tauri::command]
 pub fn get_admin_info(handle: tauri::AppHandle) -> String {
@@ -244,15 +216,15 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     }
     String::new()
 }
-fn get_admin_info_json(handle: tauri::AppHandle) -> String {
+fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> String {
     let jsondata = get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
-        name = JsonData::new(&UUID.to_string(), "name", Values::Value(String::new()));
+        name = JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
     } else {
         let jsondata = serde_json::from_str(&jsondata);
         let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
-        name = JsonData::new(&UUID.to_string(), "name", Values::Value(jsondata.name));
+        name = JsonData::new(&uid.to_string(), "name", Values::Value(jsondata.name));
     }
     serde_json::to_string(&name).unwrap()
 }
@@ -273,12 +245,13 @@ pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mut
         }
         true
     }).unwrap();
+    println!("{name}");
     name
 }
-pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::sync::Mutex<sqlite::Connection>>) -> std::io::Result<()> {
+pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: std::sync::Arc<uuid::Uuid>, socket: std::sync::Arc<std::net::UdpSocket>) -> std::io::Result<()> {
     loop {
         let mut buf = [0; 3096];
-        let (amt, addr) = SOCKET.recv_from(&mut buf)?;
+        let (amt, addr) = socket.recv_from(&mut buf)?;
         let jsonvalue = serde_json::from_str(&String::from_utf8_lossy(&buf[..amt]).to_string());
         if jsonvalue.is_err() {
             dbg!("json err:{}", jsonvalue.unwrap());
@@ -290,6 +263,6 @@ pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::syn
             continue;
         }
         let jsonvalue = jsonvalue?;
-        jsonvalue.anaslysis(&addr.to_string(), &addr, &handle, &connection).unwrap();
+        jsonvalue.anaslysis(&addr.to_string(), &addr, &handle, &connection, &uid, &socket).unwrap();
     }
 }

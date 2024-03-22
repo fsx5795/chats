@@ -31,7 +31,7 @@ fn get_user_name(id: String, state: tauri::State<CusState>) -> String {
     sqlsocket::update_ipaddr(&id, "", &state.0)
 }
 #[tauri::command]
-fn set_admin_info(name: String, img: String, handle: tauri::AppHandle) -> () {
+fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
     let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
     let mut inifile = curpath.clone();
@@ -44,9 +44,9 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle) -> () {
     let mut conf = ini::Ini::load_from_file(&inifile).unwrap();
     let section = conf.section_mut(Some("Admin").to_owned()).unwrap();
     section.insert("name".to_owned(), name.to_owned());
-    let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "name", sqlsocket::Values::Value(name));
+    let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "name", sqlsocket::Values::Value(name));
     let data = serde_json::to_string(&sendmsg).unwrap();
-    sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
     if !img.is_empty() {
         let mut imgfile = curpath;
         let imgsour = std::path::PathBuf::from(img);
@@ -55,27 +55,29 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle) -> () {
         let mut file = std::fs::File::open(&imgfile).unwrap();
         let mut filedata = Vec::new();
         file.read_to_end(&mut filedata).unwrap();
-        std::thread::spawn(move || {
-            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
-            let data = serde_json::to_string(&sendmsg).unwrap();
-            sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
-            for chunk in filedata.chunks(512) {
-                std::thread::sleep(std::time::Duration::from_micros(500_000));
-                let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+        std::thread::scope(|s| {
+            s.spawn(move || {
+                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
                 let data = serde_json::to_string(&sendmsg).unwrap();
-                sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
-            }
-            std::thread::sleep(std::time::Duration::from_micros(500_000));
-            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
-            let data = serde_json::to_string(&sendmsg).unwrap();
-            sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+                socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+                for chunk in filedata.chunks(512) {
+                    std::thread::sleep(std::time::Duration::from_micros(500_000));
+                    let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+                    let data = serde_json::to_string(&sendmsg).unwrap();
+                    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+                }
+                std::thread::sleep(std::time::Duration::from_micros(500_000));
+                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
+                let data = serde_json::to_string(&sendmsg).unwrap();
+                socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            });
         });
         section.insert("image".to_owned(), imgfile.to_string_lossy().to_string());
     }
     conf.write_to_file(inifile).unwrap();
 }
 #[tauri::command]
-fn get_chats_history(id: String, handle: tauri::AppHandle, state: tauri::State<CusState>) -> () {
+fn get_chats_history(id: String, handle: tauri::AppHandle, state: tauri::State<CusState>, uid: tauri::State<uuid::Uuid>) -> () {
     let query = format!("SELECT name FROM userinfo WHERE userid = '{}';", id);
     let connect = state.0.lock().unwrap();
     connect.iterate(query, |pairs| {
@@ -88,7 +90,7 @@ fn get_chats_history(id: String, handle: tauri::AppHandle, state: tauri::State<C
                 let mut msg = String::new();
                 for &(name, value) in pairs {
                     match name {
-                        "uuid" => iself = value.unwrap() == sqlsocket::UUID.to_string(),
+                        "uuid" => iself = value.unwrap() == uid.to_string(),
                         "type" => types = value.unwrap().to_owned(),
                         "chatmsg" => msg = value.unwrap().to_owned(),
                         _ => {}
@@ -102,22 +104,22 @@ fn get_chats_history(id: String, handle: tauri::AppHandle, state: tauri::State<C
     }).unwrap();
 }
 #[tauri::command]
-fn send_message(id: String, datetime: String, message: String, state: tauri::State<CusState>) -> () {
-    let send_data = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "chat", sqlsocket::Values::Value(message.clone()));
+fn send_message(id: String, datetime: String, message: String, state: tauri::State<CusState>, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
+    let send_data = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     let connect = state.0.lock().unwrap();
     let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
     connect.iterate(query, |pairs| {
         for &(_, value) in pairs.iter() {
-            sqlsocket::SOCKET.send_to(&data.clone().into_bytes(), format!("{}", value.unwrap())).unwrap();
+            socket.send_to(&data.clone().into_bytes(), format!("{}", value.unwrap())).unwrap();
         }
         true
     }).unwrap();
-    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", sqlsocket::UUID.to_owned(), id, datetime, "text", message);
+    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", uid.to_string(), id, datetime, "text", message);
     connect.execute(query).unwrap();
 }
 #[tauri::command]
-fn send_file(id: String, datetime: String, types: String, path: String, state: tauri::State<CusState>) -> () {
+fn send_file(id: String, datetime: String, types: String, path: String, state: tauri::State<CusState>, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
     let mut path = path;
     if types == "image" {
         let imgpath = PathBuf::from(&path);
@@ -129,40 +131,42 @@ fn send_file(id: String, datetime: String, types: String, path: String, state: t
     }
     if !path.is_empty() {
         let state = std::sync::Arc::clone(&state.0);
-        std::thread::spawn(move || {
-            match std::fs::File::open(&path) {
-                Ok(mut file) => {
-                    let connect = state.lock().unwrap();
-                    let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
-                    connect.iterate(query, |pairs| {
-                        for &(_, value) in pairs.iter() {
-                            let mut buffer = Vec::new();
-                            file.read_to_end(&mut buffer).unwrap();
-                            let filesour = std::path::PathBuf::from(&path);
-                            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "chat", sqlsocket::Values::FileData { filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("start"), contents: vec![] });
-                            let data = serde_json::to_string(&sendmsg).unwrap();
-                            sqlsocket::SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
-                            for chunk in buffer.chunks(512) {
-                                std::thread::sleep(std::time::Duration::from_micros(100_000));
-                                let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("data"), contents: chunk.to_vec()});
+        std::thread::scope(|s| {
+            s.spawn(move || {
+                match std::fs::File::open(&path) {
+                    Ok(mut file) => {
+                        let connect = state.lock().unwrap();
+                        let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
+                        connect.iterate(query, |pairs| {
+                            for &(_, value) in pairs.iter() {
+                                let mut buffer = Vec::new();
+                                file.read_to_end(&mut buffer).unwrap();
+                                let filesour = std::path::PathBuf::from(&path);
+                                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData { filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("start"), contents: vec![] });
                                 let data = serde_json::to_string(&sendmsg).unwrap();
-                                sqlsocket::SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                                socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                                for chunk in buffer.chunks(512) {
+                                    std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                    let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("data"), contents: chunk.to_vec()});
+                                    let data = serde_json::to_string(&sendmsg).unwrap();
+                                    socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                                }
+                                std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("end"), contents: vec![]});
+                                let data = serde_json::to_string(&sendmsg).unwrap();
+                                socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
                             }
-                            std::thread::sleep(std::time::Duration::from_micros(100_000));
-                            let sendmsg = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("end"), contents: vec![]});
-                            let data = serde_json::to_string(&sendmsg).unwrap();
-                            sqlsocket::SOCKET.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
-                        }
-                        true
-                    }).unwrap();
-                    let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", sqlsocket::UUID.to_owned(), id, datetime, types, path);
-                    connect.execute(query).unwrap();
+                            true
+                        }).unwrap();
+                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", uid.to_string(), id, datetime, types, path);
+                        connect.execute(query).unwrap();
+                    }
+                    Err(error) => match error.kind() {
+                        ErrorKind::NotFound => {}
+                        _ => {}
+                    }
                 }
-                Err(error) => match error.kind() {
-                    ErrorKind::NotFound => {}
-                    _ => {}
-                }
-            }
+            });
         });
     }
 }
@@ -173,14 +177,16 @@ fn show_file(path : String) -> () {
     std::process::Command::new("explorer.exe").arg(path).spawn().unwrap();
 }
 #[tauri::command]
-fn close_window() -> () {
-    let send_data = sqlsocket::JsonData::new(&sqlsocket::UUID.to_string(), "events", sqlsocket::Values::Value("closed".to_owned()));
+fn close_window(uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
+    let send_data = sqlsocket::JsonData::new(&uid.to_string(), "events", sqlsocket::Values::Value("closed".to_owned()));
     let data = serde_json::to_string(&send_data).unwrap();
-    sqlsocket::SOCKET.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
 fn main() -> () {
-    let mut dbfile = std::env::current_exe().unwrap();
-    dbfile.pop();
+    //database connection
+    let mut curpath = std::env::current_exe().unwrap();
+    curpath.pop();
+    let mut dbfile = curpath.clone();
     dbfile.push("chats.db");
     let dbexists = dbfile.exists();
     if !dbexists {
@@ -193,6 +199,30 @@ fn main() -> () {
         let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, type TEXT, chatmsg VARCHAR(200))";
         connection.lock().unwrap().execute(query).unwrap();
     }
+    //uuid
+    let mut inifile = curpath;
+    inifile.push("conf.ini");
+    let mut uid = std::sync::Arc::new(uuid::Uuid::new_v4());
+    if inifile.exists() {
+        let i = ini::Ini::load_from_file(&inifile).unwrap();
+        for (_, prop) in &i {
+            let res = prop.iter().find(|&(k, _)| k == "id");
+            if let Some((_, v)) = res {
+                uid = std::sync::Arc::new(uuid::Uuid::parse_str(v).unwrap());
+                break;
+            };
+        }
+    }
+    let mut conf = ini::Ini::new();
+    conf.with_section(Some("Admin")).set("id", *uid);
+    conf.write_to_file(inifile).unwrap();
+    //udp socket
+    let socket = std::sync::Arc::new(std::net::UdpSocket::bind("0.0.0.0:9527").unwrap());
+    let multiaddr = std::net::Ipv4Addr::new(234, 0, 0, 0);
+    let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
+    socket.join_multicast_v4(&multiaddr, &interface).unwrap();
+    socket.set_multicast_loop_v4(false).unwrap();
+    //系统托盘
     let quit = tauri::CustomMenuItem::new("quit".to_owned(), "关闭窗口");
     let hide = tauri::CustomMenuItem::new("hide".to_owned(), "隐藏窗口");
     let tray_menu = tauri::SystemTrayMenu::new()
@@ -201,10 +231,12 @@ fn main() -> () {
         .add_item(hide);
     let system_tray = tauri::SystemTray::new().with_menu(tray_menu);
     let connect = std::sync::Arc::clone(&connection);
+    let ud = std::sync::Arc::clone(&uid);
+    let udp = std::sync::Arc::clone(&socket);
     tauri::Builder::default()
         .setup(|app| {
             let apphanle = app.app_handle();
-            std::thread::spawn(move || { sqlsocket::init_socket(apphanle, connect).unwrap() });
+            std::thread::spawn(move || { sqlsocket::init_socket(apphanle, connect, ud, udp).unwrap() });
             tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".parse().unwrap()))
                 .decorations(false)
                 .always_on_top(true)
@@ -214,6 +246,8 @@ fn main() -> () {
             Ok(())
         })
         .manage(CusState(connection))
+        .manage(*uid)
+        .manage(socket)
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
         .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::load_finish, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
