@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct AdminInfo {
@@ -116,13 +116,37 @@ impl JsonData {
                     curpath.pop();
                     curpath.push(&self.id);
                     match status.as_str() {
-                        "start" => { let _ = std::fs::File::create(&curpath)?; }
+                        //"start" => { let _ = std::fs::File::create(&curpath)?; }
+                        "start" => {
+                            let _ = std::fs::File::create(&curpath)?;
+                            unsafe {
+                                FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                            }
+                        }
                         "data" => {
+                            /*
                             let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
                             file.write_all(&contents)?;
+                            */
+                            unsafe {
+                                FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                            }
                         }
                         "end" => {
-                            handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: curpath.to_string_lossy().to_string() })?;
+                            let cp = curpath.clone();
+                            std::thread::scope(|s| {
+                                s.spawn(move || {
+                                    let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
+                                    unsafe {
+                                        while FILEDATAS.get().unwrap().len() > 0 {
+                                            file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                        }
+                                        FILEDATAS.get_mut().unwrap().remove(&cp);
+                                    }
+                                    //handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
+                                    handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
+                                });
+                            });
                             let query = format!("UPDATE userinfo SET ip = '{}', imgpath = '{}' WHERE userid = '{}';", ipstr, curpath.to_string_lossy().to_string(), self.id);
                             connection.lock().unwrap().execute(query)?;
                         }
@@ -145,13 +169,36 @@ impl JsonData {
                         curpath.pop();
                         curpath.push(filename);
                         match status.as_str() {
-                            "start" => { let _ = std::fs::File::create(&curpath)?; }
+                            //"start" => { let _ = std::fs::File::create(&curpath)?; }
+                            "start" => {
+                                let _ = std::fs::File::create(&curpath)?;
+                                unsafe {
+                                    FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                                }
+                            }
                             "data" => {
+                                unsafe {
+                                    FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                                }
+                                /*
                                 let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
                                 file.write_all(&contents)?;
+                                */
                             }
                             "end" => {
-                                handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: curpath.to_string_lossy().to_string() })?;
+                                let cp = curpath.clone();
+                                std::thread::scope(|s| {
+                                    s.spawn(move || {
+                                        let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
+                                        unsafe {
+                                            while FILEDATAS.get().unwrap().len() > 0 {
+                                                file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                            }
+                                            FILEDATAS.get_mut().unwrap().remove(&cp);
+                                        }
+                                        handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
+                                    });
+                                });
                                 let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
                                 let datetime = now.format("%Y-%m-%d %H:%M:%S");
                                 let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, uid.to_owned(), datetime, types, curpath.to_string_lossy().to_string());
@@ -179,6 +226,7 @@ impl JsonData {
         Ok(())
     }
 }
+pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
 #[tauri::command]
 pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
     let data = get_admin_info_json(handle, &uid);

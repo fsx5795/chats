@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::{io::{ErrorKind, Read}, path::PathBuf};
+use std::{collections::HashMap, io::{ErrorKind, Read}, path::PathBuf};
 mod sqlsocket;
 use sqlsocket::Manager;
 //struct CusState(std::sync::Arc<std::sync::Mutex<sqlite::Connection>>);
@@ -61,12 +61,12 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: taur
                 let data = serde_json::to_string(&sendmsg).unwrap();
                 socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
                 for chunk in filedata.chunks(512) {
-                    std::thread::sleep(std::time::Duration::from_micros(500_000));
+                    std::thread::sleep(std::time::Duration::from_micros(10_000));
                     let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
                     let data = serde_json::to_string(&sendmsg).unwrap();
                     socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
                 }
-                std::thread::sleep(std::time::Duration::from_micros(500_000));
+                std::thread::sleep(std::time::Duration::from_micros(10_000));
                 let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
                 let data = serde_json::to_string(&sendmsg).unwrap();
                 socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
@@ -146,12 +146,14 @@ fn send_file(id: String, datetime: String, types: String, path: String, connecti
                                 let data = serde_json::to_string(&sendmsg).unwrap();
                                 socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
                                 for chunk in buffer.chunks(512) {
-                                    std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                    //std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                    std::thread::sleep(std::time::Duration::from_micros(10_000));
                                     let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("data"), contents: chunk.to_vec()});
                                     let data = serde_json::to_string(&sendmsg).unwrap();
                                     socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
                                 }
-                                std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                //std::thread::sleep(std::time::Duration::from_micros(100_000));
+                                std::thread::sleep(std::time::Duration::from_micros(10_000));
                                 let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("end"), contents: vec![]});
                                 let data = serde_json::to_string(&sendmsg).unwrap();
                                 socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
@@ -183,6 +185,9 @@ fn close_window(uid: tauri::State<uuid::Uuid>, socket: tauri::State<std::sync::A
     socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
 fn main() -> () {
+    unsafe {
+        sqlsocket::FILEDATAS.get_or_init(|| HashMap::new());
+    }
     //database connection
     let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
