@@ -1,5 +1,7 @@
 use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
+
+use crate::{SqlConArc, UdpArc, UidArc};
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct AdminInfo {
     name: String,
@@ -69,7 +71,7 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: &std::sync::Arc<uuid::Uuid>, socket: &std::sync::Arc<std::net::UdpSocket>) -> Result<(), Box<dyn std::error::Error>> {
+    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &SqlConArc, uid: &UidArc, socket: &UdpArc) -> Result<(), Box<dyn std::error::Error>> {
         static mut IDS: Vec<String> = Vec::new();
         match self.types.as_str() {
             //联系人上线或修改用户名
@@ -95,17 +97,19 @@ impl JsonData {
                     }).unwrap();
                     if !same {
                         let query = format!("UPDATE userinfo SET name = '{}', ip = '{}' WHERE userid = '{}';", strval, addr, self.id);
-                        connection.lock().unwrap().execute(query).unwrap();
+                        connection.lock().unwrap().execute(query)?;
                     }
                     if nothas {
                         let query = format!("INSERT INTO userinfo (userid, name, ip) VALUES ('{}', '{}', '{}');", self.id, strval, addr);
-                        connection.lock().unwrap().execute(query).unwrap();
+                        connection.lock().unwrap().execute(query)?;
                     }
                     unsafe {
                         if !IDS.contains(&self.id) {
                             IDS.push(self.id.clone());
                             let data = get_admin_info_json(handle.clone(), &uid);
-                            socket.send_to(&data.into_bytes(), addr).unwrap();
+                            if let Some(data) = data {
+                                socket.send_to(&data.into_bytes(), addr)?;
+                            };
                         }
                     }
                 };
@@ -116,7 +120,6 @@ impl JsonData {
                     curpath.pop();
                     curpath.push(&self.id);
                     match status.as_str() {
-                        //"start" => { let _ = std::fs::File::create(&curpath)?; }
                         "start" => {
                             let _ = std::fs::File::create(&curpath)?;
                             unsafe {
@@ -124,10 +127,6 @@ impl JsonData {
                             }
                         }
                         "data" => {
-                            /*
-                            let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
-                            file.write_all(&contents)?;
-                            */
                             unsafe {
                                 FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                             }
@@ -143,7 +142,6 @@ impl JsonData {
                                         }
                                         FILEDATAS.get_mut().unwrap().remove(&cp);
                                     }
-                                    //handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
                                     handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
                                 });
                             });
@@ -169,7 +167,6 @@ impl JsonData {
                         curpath.pop();
                         curpath.push(filename);
                         match status.as_str() {
-                            //"start" => { let _ = std::fs::File::create(&curpath)?; }
                             "start" => {
                                 let _ = std::fs::File::create(&curpath)?;
                                 unsafe {
@@ -180,10 +177,6 @@ impl JsonData {
                                 unsafe {
                                     FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                                 }
-                                /*
-                                let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
-                                file.write_all(&contents)?;
-                                */
                             }
                             "end" => {
                                 let cp = curpath.clone();
@@ -228,9 +221,11 @@ impl JsonData {
 }
 pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
 #[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
+pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
     let data = get_admin_info_json(handle, &uid);
-    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+    if let Some(data) = data {
+        socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+    };
 }
 #[tauri::command]
 pub fn get_admin_info(handle: tauri::AppHandle) -> String {
@@ -264,19 +259,29 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     }
     String::new()
 }
-fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> String {
+fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
     let jsondata = get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
         name = JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
     } else {
         let jsondata = serde_json::from_str(&jsondata);
-        let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
+        let jsondata = match jsondata {
+            Ok(data) => data,
+            Err(_) => return None
+        };
+        let jsondata = match serde_json::from_value::<AdminInfo>(jsondata) {
+            Ok(data) => data,
+            Err(_) => return None
+        };
         name = JsonData::new(&uid.to_string(), "name", Values::Value(jsondata.name));
     }
-    serde_json::to_string(&name).unwrap()
+    match serde_json::to_string(&name) {
+        Ok(name) => Some(name),
+        Err(_) => None
+    }
 }
-pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>) -> String {
+pub fn update_ipaddr(id: &str, ip: &str, connect: &SqlConArc) -> String {
     let mut name = String::new();
     let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", id);
     connect.lock().unwrap().iterate(query, |pairs| {
@@ -295,7 +300,7 @@ pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mut
     }).unwrap();
     name
 }
-pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: std::sync::Arc<uuid::Uuid>, socket: std::sync::Arc<std::net::UdpSocket>) -> std::io::Result<()> {
+pub fn init_socket(handle: tauri::AppHandle, connection: SqlConArc, uid: UidArc, socket: UdpArc) -> std::io::Result<()> {
     loop {
         let mut buf = [0; 3096];
         let (amt, addr) = socket.recv_from(&mut buf)?;
