@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 permissionGranted = permission === 'granted'
             }
             if (permissionGranted) {
-                invoke('get_user_name', { id: curId }).then(name => {
+                invoke('get_user_name', { id: event.payload.id }).then(name => {
                     sendNotification({ title: name, body: '发来一条消息' })
                 })
             }

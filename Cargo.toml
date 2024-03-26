@@ -12,7 +12,6 @@ serde = "*"
 serde_json = "*"
 rust-ini = "*"
 sqlite = "*"
-once_cell = "*"
 uuid = "*"
 chrono = "*"
 
@@ -24,3 +23,6 @@ registry = "git://mirrors.ustc.edu.cn/crates.io-index"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = 'abort'
