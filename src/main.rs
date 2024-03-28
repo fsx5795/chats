@@ -2,6 +2,7 @@
 use std::{collections::HashMap, io::{ErrorKind, Read}, path::PathBuf};
 mod sqlsocket;
 use sqlsocket::Manager;
+use log4rs;
 type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
 type UdpArc = std::sync::Arc<std::net::UdpSocket>;
 type UidArc = std::sync::Arc<uuid::Uuid>;
@@ -182,48 +183,88 @@ fn close_window(uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
     socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
 fn main() -> () {
+    let mut curpath = std::env::current_exe().unwrap();
+    curpath.pop();
+    //log
+    let mut logpath = curpath.clone();
+    logpath.push("output.log");
+    let logfile = log4rs::append::file::FileAppender::builder().build(logpath).unwrap();
+    let config = log4rs::config::Config::builder().appender(log4rs::config::Appender::builder().build("logfile", Box::new(logfile))).build(log4rs::config::Root::builder().appender("logfile").build(log::LevelFilter::Info)).unwrap();
+    log4rs::init_config(config).unwrap();
+    //网络文件缓冲区
     unsafe {
         sqlsocket::FILEDATAS.get_or_init(|| HashMap::new());
     }
     //database connection
-    let mut curpath = std::env::current_exe().unwrap();
-    curpath.pop();
     let mut dbfile = curpath.clone();
     dbfile.push("chats.db");
     let dbexists = dbfile.exists();
     if !dbexists {
-        std::fs::File::create(&dbfile).unwrap();
+        if let Err(err) = std::fs::File::create(&dbfile) {
+            log::error!("{}", err);
+            return;
+        };
     }
-    let connection = std::sync::Arc::new(std::sync::Mutex::new(sqlite::open(dbfile.as_path()).unwrap()));
+    let connection = match sqlite::open(dbfile.as_path()) {
+        Ok(connect) => connect,
+        Err(err) => {
+            log::error!("{}", err);
+            return;
+        }
+    };
+    let connection = std::sync::Arc::new(std::sync::Mutex::new(connection));
     if !dbexists {
         let query = "CREATE TABLE IF NOT EXISTS userinfo (userid TEXT, name TEXT, ip TEXT, imgpath VARCHAR(200))";
-        connection.lock().unwrap().execute(query).unwrap();
+        if let Err(err) = connection.lock().unwrap().execute(query) {
+            log::error!("{}", err)
+        };
         let query = "CREATE TABLE IF NOT EXISTS chatshistory (uuid TEXT, targetId TEXT, chattime DATETIME, type TEXT, chatmsg VARCHAR(200))";
-        connection.lock().unwrap().execute(query).unwrap();
+        if let Err(err) = connection.lock().unwrap().execute(query) {
+            log::error!("{}", err)
+        };
     }
     //uuid
     let mut inifile = curpath;
     inifile.push("conf.ini");
     let mut uid = std::sync::Arc::new(uuid::Uuid::new_v4());
     if inifile.exists() {
-        let i = ini::Ini::load_from_file(&inifile).unwrap();
-        for (_, prop) in &i {
-            let res = prop.iter().find(|&(k, _)| k == "id");
-            if let Some((_, v)) = res {
-                uid = std::sync::Arc::new(uuid::Uuid::parse_str(v).unwrap());
-                break;
-            };
+        match ini::Ini::load_from_file(&inifile) {
+            Ok(i) => {
+                for (_, prop) in &i {
+                    let res = prop.iter().find(|&(k, _)| k == "id");
+                    if let Some((_, v)) = res {
+                        uid = std::sync::Arc::new(uuid::Uuid::parse_str(v).unwrap());
+                        break;
+                    };
+                }
+            }
+            Err(err) => log::error!("{}", err)
         }
     }
     let mut conf = ini::Ini::new();
     conf.with_section(Some("Admin")).set("id", *uid);
-    conf.write_to_file(inifile).unwrap();
+    if let Err(err) = conf.write_to_file(inifile) {
+        log::error!("{}", err)
+    };
     //udp socket
-    let socket = std::sync::Arc::new(std::net::UdpSocket::bind("0.0.0.0:9527").unwrap());
+    let socket = match std::net::UdpSocket::bind("0.0.0.0:9527") {
+        Ok(socket) => socket,
+        Err(err) => {
+            log::error!("{}", err);
+            return
+        }
+    };
+    let socket = std::sync::Arc::new(socket);
     let multiaddr = std::net::Ipv4Addr::new(234, 0, 0, 0);
     let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
-    socket.join_multicast_v4(&multiaddr, &interface).unwrap();
-    socket.set_multicast_loop_v4(false).unwrap();
+    if let Err(err) = socket.join_multicast_v4(&multiaddr, &interface) {
+        log::error!("{}", err);
+        return
+    };
+    if let Err(err) = socket.set_multicast_loop_v4(false) {
+        log::error!("{}", err);
+        return
+    };
     //系统托盘
     let quit = tauri::CustomMenuItem::new("quit".to_owned(), "关闭窗口");
     let hide = tauri::CustomMenuItem::new("hide".to_owned(), "隐藏窗口");
@@ -238,7 +279,11 @@ fn main() -> () {
     tauri::Builder::default()
         .setup(|app| {
             let apphandle = app.app_handle();
-            std::thread::spawn(move || { sqlsocket::init_socket(apphandle, connect, id, udp).unwrap() });
+            std::thread::spawn(move || {
+                if let Err(err) = sqlsocket::init_socket(apphandle, connect, id, udp) {
+                    log::error!("{}", err)
+                };
+            });
             tauri::WindowBuilder::new(app, "splashscreen", tauri::WindowUrl::App("splashscreen.html".parse().unwrap()))
                 .decorations(false)
                 .always_on_top(true)

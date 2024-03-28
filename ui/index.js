@@ -1,7 +1,5 @@
 let curId
 let curHead = "head.jpg"
-const { readBinaryFile } = window.__TAURI__.fs
-const { open } = window.__TAURI__.dialog
 function getDateTime() {
     const date = new Date()
     const year = date.getFullYear().toString().padStart(4, '0')
@@ -12,144 +10,149 @@ function getDateTime() {
     const second = date.getSeconds().toString().padStart(2, '0')
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
-document.addEventListener('DOMContentLoaded', () => {
-    const chatInfo = document.getElementById('chatinfo')
-    chatInfo.style.display = 'none'
-    const { invoke } = window.__TAURI__.tauri
-    invoke('close_splashscreen')
-    const { listen } = window.__TAURI__.event
-    const unlisten = async() => {
-        await listen('ipname', event => {
-            let isSame = false
-            const persons = document.getElementById('persons')
-            const msg = {
-                value: event.payload.name
-            }
-            persons.querySelectorAll('chat-persons').forEach(p => {
-                if (p.getAttribute('userId') === event.payload.id) {
-                    isSame = true
-                    p.setAttribute('name', JSON.stringify(msg))
-                }
-            })
-            if (isSame) return
-            const chatperson = document.createElement('chat-persons')
-            persons.appendChild(chatperson)
-            chatperson.setAttribute('userId', event.payload.id)
-            chatperson.setAttribute('name', JSON.stringify(msg))
-            chatperson.onclick = () => {
-                if (curId !== event.payload.id) {
-                    persons.querySelectorAll('chat-persons').forEach(p => {
-                        p.setAttribute('bgcolor', 'nomal')
-                    })
-                    chatperson.setAttribute('bgcolor', 'pressed')
-                    const chatInfo = document.getElementById('chatinfo')
-                    if (chatInfo.style.display === 'none') {
-                        chatInfo.style.display = ''
-                        document.getElementById('bgdiv').style.display = 'none'
-                    }
-                    const session = document.getElementById('session')
-                    session.querySelectorAll('chat-session').forEach(chat => {
-                        session.removeChild(chat)
-                    })
-                    curId = event.payload.id
-                    invoke('get_chats_history', { id: curId })
-                }
+const { listen } = window.__TAURI__.event
+const { invoke } = window.__TAURI__.tauri
+const { readBinaryFile } = window.__TAURI__.fs
+const unlisten = async() => {
+    await listen('ipname', event => {
+        let isSame = false
+        const persons = document.getElementById('persons')
+        const msg = {
+            value: event.payload.name
+        }
+        persons.querySelectorAll('chat-persons').forEach(p => {
+            if (p.getAttribute('userId') === event.payload.id) {
+                isSame = true
+                p.setAttribute('name', JSON.stringify(msg))
             }
         })
-        //接收到聊天消息
-        await listen('chats', async(event) => {
-            if (event.payload.id === curId) {
-                const leftchat = document.createElement('chat-session')
-                session.appendChild(leftchat)
-                const head = document.getElementById('head')
-                const msg = {
-                    src: event.payload.iself ? head.src : curHead,
-                    head: event.payload.name,
-                    type: 'text',
-                    value: event.payload.msg
-                }
-                leftchat.setAttribute('message', JSON.stringify(msg))
-                leftchat.setAttribute('align', 'left')
-            }
-            const { isPermissionGranted, requestPermission, sendNotification } = window.__TAURI__.notification
-            let permissionGranted = await isPermissionGranted()
-            if (!permissionGranted) {
-                const permission = await requestPermission()
-                permissionGranted = permission === 'granted'
-            }
-            if (permissionGranted) {
-                invoke('get_user_name', { id: event.payload.id }).then(name => {
-                    sendNotification({ title: name, body: '发来一条消息' })
+        if (isSame) return
+        const chatperson = document.createElement('chat-persons')
+        persons.appendChild(chatperson)
+        chatperson.setAttribute('userId', event.payload.id)
+        chatperson.setAttribute('name', JSON.stringify(msg))
+        chatperson.onclick = () => {
+            if (curId !== event.payload.id) {
+                persons.querySelectorAll('chat-persons').forEach(p => {
+                    p.setAttribute('bgcolor', 'nomal')
                 })
+                chatperson.setAttribute('bgcolor', 'pressed')
+                const chatInfo = document.getElementById('chatinfo')
+                if (chatInfo.style.display === 'none') {
+                    chatInfo.style.display = ''
+                    document.getElementById('bgdiv').style.display = 'none'
+                }
+                const session = document.getElementById('session')
+                session.querySelectorAll('chat-session').forEach(chat => {
+                    session.removeChild(chat)
+                })
+                curId = event.payload.id
+                invoke('get_chats_history', { id: curId })
             }
-        })
-        await listen('chatstory', async(event) => {
-            const session = document.getElementById('session')
+        }
+    })
+    //接收到聊天消息
+    await listen('chats', async(event) => {
+        if (event.payload.id === curId) {
             const leftchat = document.createElement('chat-session')
             session.appendChild(leftchat)
             const head = document.getElementById('head')
             const msg = {
                 src: event.payload.iself ? head.src : curHead,
-                head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
-                type: event.payload.types,
+                head: event.payload.name,
+                type: 'text',
                 value: event.payload.msg
             }
             leftchat.setAttribute('message', JSON.stringify(msg))
-            if (event.payload.iself) {
-                leftchat.setAttribute('align', 'right')
-            } else {
-                leftchat.setAttribute('align', 'left')
-            }
-        })
-        await listen('userhead', async(event) => {
-            const persons = document.getElementById('persons')
-            persons.querySelectorAll('chat-persons').forEach(async(p) => {
-                if (p.getAttribute('userId') === event.payload.id) {
-                    const contents = await readBinaryFile(event.payload.path)
-                    const blob = new Blob([contents])
-                    const src = URL.createObjectURL(blob)
-                    curHead = src
-                    const msg = {
-                        value: src
-                    }
-                    p.setAttribute('head', JSON.stringify(msg))
-                }
-            })
-        })
-        await listen('userfile', async(event) => {
-            const leftchat = document.createElement('chat-session')
-            session.appendChild(leftchat)
-            const msg = {
-                src: curHead,
-                head: event.payload.name,
-                type: event.payload.types,
-                value: event.payload.path
-            }
-            leftchat.setAttribute('message', JSON.stringify(msg))
             leftchat.setAttribute('align', 'left')
-        })
-        await listen('error', event => {
-            const { message } = window.__TAURI__.dialog
-            message(event.payload, { title: '警告', type: 'error' })
-        })
-        await listen('exited', event => {
-            const persons = document.getElementById('persons')
-            persons.querySelectorAll('chat-persons').forEach(p => {
-                if (p.getAttribute('userId') === event.payload) {
-                    persons.removeChild(p)
-                    if (curId === event.payload) {
-                        const bgdiv = document.getElementById('bgdiv')
-                        if (bgdiv.style.display === 'none') {
-                            bgdiv.style.display = ''
-                            document.getElementById('chatinfo').style.display = 'none'
-                        }
-                        curId = ''
-                    }
-                }
+        }
+        const { isPermissionGranted, requestPermission, sendNotification } = window.__TAURI__.notification
+        let permissionGranted = await isPermissionGranted()
+        if (!permissionGranted) {
+            const permission = await requestPermission()
+            permissionGranted = permission === 'granted'
+        }
+        if (permissionGranted) {
+            invoke('get_user_name', { id: event.payload.id }).then(name => {
+                sendNotification({ title: name, body: '发来一条消息' })
             })
+        }
+    })
+    await listen('chatstory', async(event) => {
+        const session = document.getElementById('session')
+        const leftchat = document.createElement('chat-session')
+        session.appendChild(leftchat)
+        const head = document.getElementById('head')
+        const msg = {
+            src: event.payload.iself ? head.src : curHead,
+            head: event.payload.iself ? head.getAttribute('name') : event.payload.name,
+            type: event.payload.types,
+            value: event.payload.msg
+        }
+        leftchat.setAttribute('message', JSON.stringify(msg))
+        if (event.payload.iself) {
+            leftchat.setAttribute('align', 'right')
+        } else {
+            leftchat.setAttribute('align', 'left')
+        }
+    })
+    await listen('userhead', async(event) => {
+        const persons = document.getElementById('persons')
+        persons.querySelectorAll('chat-persons').forEach(async(p) => {
+            if (p.getAttribute('userId') === event.payload.id) {
+                const contents = await readBinaryFile(event.payload.path)
+                const blob = new Blob([contents])
+                const src = URL.createObjectURL(blob)
+                curHead = src
+                const msg = {
+                    value: src
+                }
+                p.setAttribute('head', JSON.stringify(msg))
+            }
         })
-    }
-    unlisten()
+    })
+    await listen('userfile', async(event) => {
+        const leftchat = document.createElement('chat-session')
+        session.appendChild(leftchat)
+        const msg = {
+            src: curHead,
+            head: event.payload.name,
+            type: event.payload.types,
+            value: event.payload.path
+        }
+        leftchat.setAttribute('message', JSON.stringify(msg))
+        leftchat.setAttribute('align', 'left')
+    })
+    await listen('error', event => {
+        const dialog = document.getElementById('errDialog')
+        dialog.querySelector('p').innerText = event.payload
+        dialog.querySelector('button').onclick = () => {
+            dialog.close()
+        }
+        dialog.showModal()
+    })
+    await listen('exited', event => {
+        const persons = document.getElementById('persons')
+        persons.querySelectorAll('chat-persons').forEach(p => {
+            if (p.getAttribute('userId') === event.payload) {
+                persons.removeChild(p)
+                if (curId === event.payload) {
+                    const bgdiv = document.getElementById('bgdiv')
+                    if (bgdiv.style.display === 'none') {
+                        bgdiv.style.display = ''
+                        document.getElementById('chatinfo').style.display = 'none'
+                    }
+                    curId = ''
+                }
+            }
+        })
+    })
+}
+unlisten()
+document.addEventListener('DOMContentLoaded', () => {
+    const chatInfo = document.getElementById('chatinfo')
+    chatInfo.style.display = 'none'
+    invoke('close_splashscreen')
     const head = document.getElementById('head')
     invoke('get_admin_info').then(async(jsonData) => {
         if (jsonData !== "") {
@@ -172,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let imgPath = "";
     //管理员信息设置对话框点击头像选择更改的头像文件
     img.addEventListener('click', async () => {
+        const { open } = window.__TAURI__.dialog
         imgPath = await open({
             multiple: false,
             filters: [{
