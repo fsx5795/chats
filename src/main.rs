@@ -26,7 +26,7 @@ async fn close_splashscreen(window: tauri::Window) -> () {
 }
 #[tauri::command]
 fn get_user_name(id: String, connection: tauri::State<SqlConArc>) -> String {
-    sqlsocket::update_ipaddr(&id, "", &connection)
+    crate::sqlsocket::update_ipaddr(&id, "", &connection)
 }
 #[tauri::command]
 fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<UdpArc>) -> () {
@@ -42,8 +42,7 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: taur
     let mut conf = ini::Ini::load_from_file(&inifile).unwrap();
     let section = conf.section_mut(Some("Admin").to_owned()).unwrap();
     section.insert("name".to_owned(), name.to_owned());
-    let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "name", sqlsocket::Values::Value(name));
-    //let data = serde_json::to_string(&sendmsg).unwrap();
+    let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "name", crate::sqlsocket::Values::Value(name));
     let data = std::sync::Arc::new(serde_json::to_string(&sendmsg).unwrap());
     let dt = (*std::sync::Arc::clone(&data)).clone();
     socket.send_to(&dt.into_bytes(), "234.0.0.0:9527").unwrap();
@@ -58,17 +57,17 @@ fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: taur
         let uid = std::sync::Arc::clone(&uid);
         let socket = std::sync::Arc::clone(&socket);
         std::thread::spawn(move || {
-            let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
+            let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "headimg", crate::sqlsocket::Values::HeadImg{ status: String::from("start"), contents: vec![] });
             let data = serde_json::to_string(&sendmsg).unwrap();
             socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
             for chunk in filedata.chunks(512) {
                 std::thread::sleep(std::time::Duration::from_micros(10_000));
-                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+                let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "headimg", crate::sqlsocket::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
                 let data = serde_json::to_string(&sendmsg).unwrap();
                 socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
             }
             std::thread::sleep(std::time::Duration::from_micros(10_000));
-            let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "headimg", sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
+            let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "headimg", crate::sqlsocket::Values::HeadImg{ status: String::from("end"), contents: vec![] });
             let data = serde_json::to_string(&sendmsg).unwrap();
             socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
         });
@@ -105,7 +104,7 @@ fn get_chats_history(id: String, handle: tauri::AppHandle, connection: tauri::St
 }
 #[tauri::command]
 fn send_message(id: String, datetime: String, message: String, connection: tauri::State<SqlConArc>, uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
-    let send_data = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::Value(message.clone()));
+    let send_data = crate::sqlsocket::JsonData::new(&uid.to_string(), "chat", crate::sqlsocket::Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     let connect = connection.lock().unwrap();
     let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
@@ -133,39 +132,37 @@ fn send_file(id: String, datetime: String, types: String, path: String, connecti
         let state = std::sync::Arc::clone(&connection);
         std::thread::scope(|s| {
             s.spawn(move || {
-                match std::fs::File::open(&path) {
-                    Ok(mut file) => {
-                        let connect = state.lock().unwrap();
-                        let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
-                        connect.iterate(query, |pairs| {
-                            for &(_, value) in pairs.iter() {
-                                let mut buffer = Vec::new();
-                                file.read_to_end(&mut buffer).unwrap();
-                                let filesour = std::path::PathBuf::from(&path);
-                                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData { filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("start"), contents: vec![] });
-                                let data = serde_json::to_string(&sendmsg).unwrap();
-                                socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
-                                for chunk in buffer.chunks(512) {
-                                    std::thread::sleep(std::time::Duration::from_micros(10_000));
-                                    let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("data"), contents: chunk.to_vec()});
-                                    let data = serde_json::to_string(&sendmsg).unwrap();
-                                    socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
-                                }
-                                std::thread::sleep(std::time::Duration::from_micros(10_000));
-                                let sendmsg = sqlsocket::JsonData::new(&uid.to_string(), "chat", sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("end"), contents: vec![]});
-                                let data = serde_json::to_string(&sendmsg).unwrap();
-                                socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
-                            }
-                            true
-                        }).unwrap();
-                        let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", uid.to_string(), id, datetime, types, path);
-                        connect.execute(query).unwrap();
+                let mut file = std::fs::File::open(&path).unwrap_or_else(|error|{
+                    match error.kind() {
+                        ErrorKind::NotFound => std::fs::File::create(&path).unwrap(),
+                        _ => panic!("image error")
                     }
-                    Err(error) => match error.kind() {
-                        ErrorKind::NotFound => {}
-                        _ => {}
+                });
+                let connect = state.lock().unwrap();
+                let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
+                connect.iterate(query, |pairs| {
+                    for &(_, value) in pairs.iter() {
+                        let mut buffer = Vec::new();
+                        file.read_to_end(&mut buffer).unwrap();
+                        let filesour = std::path::PathBuf::from(&path);
+                        let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "chat", crate::sqlsocket::Values::FileData { filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("start"), contents: vec![] });
+                        let data = serde_json::to_string(&sendmsg).unwrap();
+                        socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                        for chunk in buffer.chunks(512) {
+                            std::thread::sleep(std::time::Duration::from_micros(10_000));
+                            let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "chat", crate::sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("data"), contents: chunk.to_vec()});
+                            let data = serde_json::to_string(&sendmsg).unwrap();
+                            socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
+                        }
+                        std::thread::sleep(std::time::Duration::from_micros(10_000));
+                        let sendmsg = crate::sqlsocket::JsonData::new(&uid.to_string(), "chat", crate::sqlsocket::Values::FileData {filename: filesour.file_name().unwrap().to_string_lossy().to_string(), types: types.clone(), status: String::from("end"), contents: vec![]});
+                        let data = serde_json::to_string(&sendmsg).unwrap();
+                        socket.send_to(&data.into_bytes(), format!("{}", value.unwrap())).unwrap();
                     }
-                }
+                    true
+                }).unwrap();
+                let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", uid.to_string(), id, datetime, types, path);
+                connect.execute(query).unwrap();
             });
         });
     }
@@ -178,7 +175,7 @@ fn show_file(path : String) -> () {
 }
 #[tauri::command]
 fn close_window(uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
-    let send_data = sqlsocket::JsonData::new(&uid.to_string(), "events", sqlsocket::Values::Value("closed".to_owned()));
+    let send_data = crate::sqlsocket::JsonData::new(&uid.to_string(), "events", crate::sqlsocket::Values::Value("closed".to_owned()));
     let data = serde_json::to_string(&send_data).unwrap();
     socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
 }
@@ -193,7 +190,7 @@ fn main() -> () {
     log4rs::init_config(config).unwrap();
     //网络文件缓冲区
     unsafe {
-        sqlsocket::FILEDATAS.get_or_init(|| HashMap::new());
+        crate::sqlsocket::FILEDATAS.get_or_init(|| HashMap::new());
     }
     //database connection
     let mut dbfile = curpath.clone();
@@ -205,13 +202,10 @@ fn main() -> () {
             return;
         };
     }
-    let connection = match sqlite::open(dbfile.as_path()) {
-        Ok(connect) => connect,
-        Err(err) => {
-            log::error!("{}", err);
-            return;
-        }
-    };
+    let connection = sqlite::open(dbfile.as_path()).unwrap_or_else(|err| {
+        log::error!("{}", err);
+        panic!("{:?}", err)
+    });
     let connection = std::sync::Arc::new(std::sync::Mutex::new(connection));
     if !dbexists {
         let query = "CREATE TABLE IF NOT EXISTS userinfo (userid TEXT, name TEXT, ip TEXT, imgpath VARCHAR(200))";
@@ -231,11 +225,7 @@ fn main() -> () {
         match ini::Ini::load_from_file(&inifile) {
             Ok(i) => {
                 for (_, prop) in &i {
-                    let res = prop.iter().find(|&(k, _)| k == "id");
-                    if let Some((_, v)) = res {
-                        uid = std::sync::Arc::new(uuid::Uuid::parse_str(v).unwrap());
-                        break;
-                    };
+                    prop.iter().find(|&(k, _)| k == "id").map(| (_, v) | uid = std::sync::Arc::new(uuid::Uuid::parse_str(v).unwrap()));
                 }
             }
             Err(err) => log::error!("{}", err)
@@ -247,13 +237,10 @@ fn main() -> () {
         log::error!("{}", err)
     };
     //udp socket
-    let socket = match std::net::UdpSocket::bind("0.0.0.0:9527") {
-        Ok(socket) => socket,
-        Err(err) => {
-            log::error!("{}", err);
-            return
-        }
-    };
+    let socket = std::net::UdpSocket::bind("0.0.0.0:9527").unwrap_or_else(|err| {
+        log::error!("{}", err);
+        panic!("{:?}", err)
+    });
     let socket = std::sync::Arc::new(socket);
     let multiaddr = std::net::Ipv4Addr::new(234, 0, 0, 0);
     let interface = std::net::Ipv4Addr::new(0, 0, 0, 0);
@@ -280,7 +267,7 @@ fn main() -> () {
         .setup(|app| {
             let apphandle = app.app_handle();
             std::thread::spawn(move || {
-                if let Err(err) = sqlsocket::init_socket(apphandle, connect, id, udp) {
+                if let Err(err) = crate::sqlsocket::init_socket(apphandle, connect, id, udp) {
                     log::error!("{}", err)
                 };
             });
@@ -297,7 +284,7 @@ fn main() -> () {
         .manage(socket)
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, sqlsocket::load_finish, sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, crate::sqlsocket::load_finish, crate::sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -123,12 +123,12 @@ impl JsonData {
                         "start" => {
                             let _ = std::fs::File::create(&curpath)?;
                             unsafe {
-                                FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                                self::FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
                             }
                         }
                         "data" => {
                             unsafe {
-                                FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                                self::FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                             }
                         }
                         "end" => {
@@ -137,10 +137,10 @@ impl JsonData {
                                 s.spawn(move || {
                                     let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                     unsafe {
-                                        while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
-                                            file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                        while self::FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
+                                            file.write_all(&self::FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                         }
-                                        FILEDATAS.get_mut().unwrap().remove(&cp);
+                                        self::FILEDATAS.get_mut().unwrap().remove(&cp);
                                     }
                                     handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
                                 });
@@ -153,7 +153,7 @@ impl JsonData {
                 }
             }
             "chat" => {
-                let name = update_ipaddr(&self.id, &ipstr, &connection);
+                let name = self::update_ipaddr(&self.id, &ipstr, &connection);
                 match &self.values {
                     Values::Value(msg) => {
                         handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
@@ -170,12 +170,12 @@ impl JsonData {
                             "start" => {
                                 let _ = std::fs::File::create(&curpath)?;
                                 unsafe {
-                                    FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                                    self::FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
                                 }
                             }
                             "data" => {
                                 unsafe {
-                                    FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                                    self::FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                                 }
                             }
                             "end" => {
@@ -184,10 +184,10 @@ impl JsonData {
                                     s.spawn(move || {
                                         let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                         unsafe {
-                                            while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
-                                                file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                            while self::FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
+                                                file.write_all(&self::FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                             }
-                                            FILEDATAS.get_mut().unwrap().remove(&cp);
+                                            self::FILEDATAS.get_mut().unwrap().remove(&cp);
                                         }
                                         handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
                                     });
@@ -207,7 +207,7 @@ impl JsonData {
                 update_ipaddr(&self.id, &ipstr, &connection);
                 if let Values::Value(msg) = &self.values {
                     if msg == "closed" {
-                        handle.emit_to("main", "exited", self.id.to_string()).unwrap();
+                        handle.emit_to("main", "exited", self.id.to_string())?;
                         unsafe {
                             IDS.retain(|item| *item != self.id);
                         }
@@ -222,7 +222,7 @@ impl JsonData {
 pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
 #[tauri::command]
 pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
-    let data = get_admin_info_json(handle, &uid);
+    let data = self::get_admin_info_json(handle, &uid);
     if let Some(data) = data {
         socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
     };
@@ -260,7 +260,7 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     String::new()
 }
 fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
-    let jsondata = get_admin_info(handle);
+    let jsondata = self::get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
         name = JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
