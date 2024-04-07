@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use std::{collections::HashMap, io::{ErrorKind, Read}, path::PathBuf};
 mod sqlsocket;
+mod cmds;
 use sqlsocket::Manager;
 use log4rs;
 type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
@@ -284,7 +285,7 @@ fn main() -> () {
         .manage(socket)
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| menu_handle(app, event))
-        .invoke_handler(tauri::generate_handler![close_splashscreen, crate::sqlsocket::load_finish, crate::sqlsocket::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
+        .invoke_handler(tauri::generate_handler![close_splashscreen, crate::cmds::load_finish, crate::cmds::get_admin_info, get_user_name, set_admin_info, get_chats_history, send_message, send_file, show_file, close_window])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

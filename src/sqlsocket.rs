@@ -1,11 +1,10 @@
 use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
-
 use crate::{SqlConArc, UdpArc, UidArc};
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct AdminInfo {
-    name: String,
-    image: String
+pub struct AdminInfo {
+    pub name: String,
+    pub image: String
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ChatUser {
@@ -220,47 +219,8 @@ impl JsonData {
     }
 }
 pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
-#[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<UidArc>, socket: tauri::State<UdpArc>) -> () {
-    let data = self::get_admin_info_json(handle, &uid);
-    if let Some(data) = data {
-        socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
-    };
-}
-#[tauri::command]
-pub fn get_admin_info(handle: tauri::AppHandle) -> String {
-    let mut inifile = std::env::current_exe().unwrap();
-    inifile.pop();
-    inifile.push("conf.ini");
-    if inifile.exists() {
-        let i = ini::Ini::load_from_file(inifile).unwrap();
-        let section = i.section(Some("Admin").to_owned()).unwrap();
-        let mut name = String::new();
-        let mut image = String::new();
-        if let Some(value) = section.get("name") {
-            name = value.to_owned();
-        }
-        if let Some(value) = section.get("image") {
-            image = value.to_owned();
-        }
-        let json = AdminInfo {
-            name,
-            image,
-        };
-        return serde_json::to_string(&json).unwrap();
-    } else {
-        if let Err(_) = std::fs::File::create(&inifile) {
-            handle.emit_to("main", "error", "用户信息保存失败").unwrap();
-        }
-        let id = uuid::Uuid::new_v4();
-        let mut conf = ini::Ini::new();
-        conf.with_section(Some("Admin")).set("id", id);
-        conf.write_to_file(inifile).unwrap();
-    }
-    String::new()
-}
-fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
-    let jsondata = self::get_admin_info(handle);
+pub fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
+    let jsondata = crate::cmds::get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
         name = JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
