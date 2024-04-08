@@ -1,6 +1,8 @@
-use std::{collections::HashMap, io::Write, path::PathBuf};
+pub use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
-use crate::{SqlConArc, UdpArc, UidArc};
+pub type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
+pub type UdpArc = std::sync::Arc<std::net::UdpSocket>;
+pub type UidArc = std::sync::Arc<uuid::Uuid>;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct AdminInfo {
     pub name: String,
