@@ -174,8 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const img = dialog.querySelector('img')
     let imgPath = "";
     //管理员信息设置对话框点击头像选择更改的头像文件
+    const { open } = window.__TAURI__.dialog
     img.addEventListener('click', async () => {
-        const { open } = window.__TAURI__.dialog
         imgPath = await open({
             multiple: false,
             filters: [{
