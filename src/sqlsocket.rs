@@ -1,9 +1,12 @@
-use std::{collections::HashMap, io::Write, path::PathBuf};
+pub use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
+pub type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
+pub type UdpArc = std::sync::Arc<std::net::UdpSocket>;
+pub type UidArc = std::sync::Arc<uuid::Uuid>;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct AdminInfo {
-    name: String,
-    image: String
+pub struct AdminInfo {
+    pub name: String,
+    pub image: String
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ChatUser {
@@ -69,7 +72,7 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: &std::sync::Arc<uuid::Uuid>, socket: &std::sync::Arc<std::net::UdpSocket>) -> Result<(), Box<dyn std::error::Error>> {
+    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &SqlConArc, uid: &UidArc, socket: &UdpArc) -> Result<(), Box<dyn std::error::Error>> {
         static mut IDS: Vec<String> = Vec::new();
         match self.types.as_str() {
             //联系人上线或修改用户名
@@ -95,17 +98,19 @@ impl JsonData {
                     }).unwrap();
                     if !same {
                         let query = format!("UPDATE userinfo SET name = '{}', ip = '{}' WHERE userid = '{}';", strval, addr, self.id);
-                        connection.lock().unwrap().execute(query).unwrap();
+                        connection.lock().unwrap().execute(query)?;
                     }
                     if nothas {
                         let query = format!("INSERT INTO userinfo (userid, name, ip) VALUES ('{}', '{}', '{}');", self.id, strval, addr);
-                        connection.lock().unwrap().execute(query).unwrap();
+                        connection.lock().unwrap().execute(query)?;
                     }
                     unsafe {
                         if !IDS.contains(&self.id) {
                             IDS.push(self.id.clone());
                             let data = get_admin_info_json(handle.clone(), &uid);
-                            socket.send_to(&data.into_bytes(), addr).unwrap();
+                            if let Some(data) = data {
+                                socket.send_to(&data.into_bytes(), addr)?;
+                            };
                         }
                     }
                 };
@@ -116,20 +121,15 @@ impl JsonData {
                     curpath.pop();
                     curpath.push(&self.id);
                     match status.as_str() {
-                        //"start" => { let _ = std::fs::File::create(&curpath)?; }
                         "start" => {
                             let _ = std::fs::File::create(&curpath)?;
                             unsafe {
-                                FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                                self::FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
                             }
                         }
                         "data" => {
-                            /*
-                            let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
-                            file.write_all(&contents)?;
-                            */
                             unsafe {
-                                FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                                self::FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                             }
                         }
                         "end" => {
@@ -138,12 +138,11 @@ impl JsonData {
                                 s.spawn(move || {
                                     let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                     unsafe {
-                                        while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
-                                            file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                        while self::FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
+                                            file.write_all(&self::FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                         }
-                                        FILEDATAS.get_mut().unwrap().remove(&cp);
+                                        self::FILEDATAS.get_mut().unwrap().remove(&cp);
                                     }
-                                    //handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
                                     handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
                                 });
                             });
@@ -155,7 +154,7 @@ impl JsonData {
                 }
             }
             "chat" => {
-                let name = update_ipaddr(&self.id, &ipstr, &connection);
+                let name = self::update_ipaddr(&self.id, &ipstr, &connection);
                 match &self.values {
                     Values::Value(msg) => {
                         handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
@@ -169,21 +168,16 @@ impl JsonData {
                         curpath.pop();
                         curpath.push(filename);
                         match status.as_str() {
-                            //"start" => { let _ = std::fs::File::create(&curpath)?; }
                             "start" => {
                                 let _ = std::fs::File::create(&curpath)?;
                                 unsafe {
-                                    FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
+                                    self::FILEDATAS.get_mut().unwrap().insert(curpath, std::collections::VecDeque::new());
                                 }
                             }
                             "data" => {
                                 unsafe {
-                                    FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
+                                    self::FILEDATAS.get_mut().unwrap().get_mut(&curpath).unwrap().push_back(contents.to_vec());
                                 }
-                                /*
-                                let mut file = std::fs::OpenOptions::new().append(true).open(&curpath)?;
-                                file.write_all(&contents)?;
-                                */
                             }
                             "end" => {
                                 let cp = curpath.clone();
@@ -191,10 +185,10 @@ impl JsonData {
                                     s.spawn(move || {
                                         let mut file = std::fs::OpenOptions::new().append(true).open(&cp).unwrap();
                                         unsafe {
-                                            while FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
-                                                file.write_all(&FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
+                                            while self::FILEDATAS.get().unwrap().get(&cp).unwrap().len() > 0 {
+                                                file.write_all(&self::FILEDATAS.get_mut().unwrap().get_mut(&cp).unwrap().pop_front().unwrap()).unwrap();
                                             }
-                                            FILEDATAS.get_mut().unwrap().remove(&cp);
+                                            self::FILEDATAS.get_mut().unwrap().remove(&cp);
                                         }
                                         handle.emit_to("main", "userfile", SendFile{ id: self.id.clone(), types: (*types).clone(), name, path: cp.to_string_lossy().to_string() }).unwrap();
                                     });
@@ -214,7 +208,7 @@ impl JsonData {
                 update_ipaddr(&self.id, &ipstr, &connection);
                 if let Values::Value(msg) = &self.values {
                     if msg == "closed" {
-                        handle.emit_to("main", "exited", self.id.to_string()).unwrap();
+                        handle.emit_to("main", "exited", self.id.to_string())?;
                         unsafe {
                             IDS.retain(|item| *item != self.id);
                         }
@@ -227,56 +221,29 @@ impl JsonData {
     }
 }
 pub static mut FILEDATAS: std::sync::OnceLock<HashMap<PathBuf, std::collections::VecDeque<Vec<u8>>>> = std::sync::OnceLock::new();
-#[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<std::sync::Arc<std::net::UdpSocket>>) -> () {
-    let data = get_admin_info_json(handle, &uid);
-    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
-}
-#[tauri::command]
-pub fn get_admin_info(handle: tauri::AppHandle) -> String {
-    let mut inifile = std::env::current_exe().unwrap();
-    inifile.pop();
-    inifile.push("conf.ini");
-    if inifile.exists() {
-        let i = ini::Ini::load_from_file(inifile).unwrap();
-        let section = i.section(Some("Admin").to_owned()).unwrap();
-        let mut name = String::new();
-        let mut image = String::new();
-        if let Some(value) = section.get("name") {
-            name = value.to_owned();
-        }
-        if let Some(value) = section.get("image") {
-            image = value.to_owned();
-        }
-        let json = AdminInfo {
-            name,
-            image,
-        };
-        return serde_json::to_string(&json).unwrap();
-    } else {
-        if let Err(_) = std::fs::File::create(&inifile) {
-            handle.emit_to("main", "error", "用户信息保存失败").unwrap();
-        }
-        let id = uuid::Uuid::new_v4();
-        let mut conf = ini::Ini::new();
-        conf.with_section(Some("Admin")).set("id", id);
-        conf.write_to_file(inifile).unwrap();
-    }
-    String::new()
-}
-fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> String {
-    let jsondata = get_admin_info(handle);
+pub fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
+    let jsondata = crate::cmds::get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
         name = JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
     } else {
         let jsondata = serde_json::from_str(&jsondata);
-        let jsondata = serde_json::from_value::<AdminInfo>(jsondata.unwrap()).unwrap();
+        let jsondata = match jsondata {
+            Ok(data) => data,
+            Err(_) => return None
+        };
+        let jsondata = match serde_json::from_value::<AdminInfo>(jsondata) {
+            Ok(data) => data,
+            Err(_) => return None
+        };
         name = JsonData::new(&uid.to_string(), "name", Values::Value(jsondata.name));
     }
-    serde_json::to_string(&name).unwrap()
+    match serde_json::to_string(&name) {
+        Ok(name) => Some(name),
+        Err(_) => None
+    }
 }
-pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mutex<sqlite::Connection>>) -> String {
+pub fn update_ipaddr(id: &str, ip: &str, connect: &SqlConArc) -> String {
     let mut name = String::new();
     let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", id);
     connect.lock().unwrap().iterate(query, |pairs| {
@@ -295,7 +262,7 @@ pub fn update_ipaddr(id: &str, ip: &str, connect: &std::sync::Arc<std::sync::Mut
     }).unwrap();
     name
 }
-pub fn init_socket(handle: tauri::AppHandle, connection: std::sync::Arc<std::sync::Mutex<sqlite::Connection>>, uid: std::sync::Arc<uuid::Uuid>, socket: std::sync::Arc<std::net::UdpSocket>) -> std::io::Result<()> {
+pub fn init_socket(handle: tauri::AppHandle, connection: SqlConArc, uid: UidArc, socket: UdpArc) -> std::io::Result<()> {
     loop {
         let mut buf = [0; 3096];
         let (amt, addr) = socket.recv_from(&mut buf)?;

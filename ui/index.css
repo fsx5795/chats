@@ -123,10 +123,6 @@ textarea {
     background-color: rgb(88, 101, 242);
 }
 dialog {
-    top: 10px;
-    left: 10px;
-    width: 150px;
-    height: 200px;
     padding: 0;
     border: none;
     border-radius: 10px;
@@ -140,6 +136,17 @@ dialog > div {
     flex-direction: column;
     align-items: center;
     justify-content: space-around;
+}
+#adminDialog {
+    top: 10px;
+    left: 10px;
+    width: 150px;
+    height: 200px;
+}
+#errDialog {
+    top: calc(100% / 2);
+    left: calc(100% / 2);
+    transform: translate(-50%, -100%);
 }
 input {
     width: 100px;
