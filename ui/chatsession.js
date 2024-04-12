@@ -7,10 +7,16 @@ class Chat extends HTMLElement {
         shadow.appendChild(tp)
     }
     static get observedAttributes() {
-        return ['message', 'align', 'textwidth']
+        return ['name', 'head', 'message', 'align', 'textwidth']
     }
     async attributeChangedCallback(name, _oldVal, newVal) {
         switch (name) {
+            case 'name':
+                this.shadowRoot.querySelector('span').innerText = newVal
+                break;
+            case 'head':
+                this.shadowRoot.querySelector('img').src = newVal
+                break;
             case 'message':
                 if (newVal) {
                     const msg = JSON.parse(newVal)
@@ -37,6 +43,7 @@ class Chat extends HTMLElement {
                                 const unlisten = async() => {
                                     await listen('getimg', () => {
                                         w.emit('showimg', { image: img.src })
+                                        w.show()
                                     })
                                 }
                                 unlisten()

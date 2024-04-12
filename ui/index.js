@@ -16,6 +16,7 @@ const { readBinaryFile } = window.__TAURI__.fs
 const unlisten = async() => {
     await listen('ipname', event => {
         let isSame = false
+        //修改联系人列表
         const persons = document.getElementById('persons')
         const msg = {
             value: event.payload.name
@@ -26,6 +27,14 @@ const unlisten = async() => {
                 p.setAttribute('name', JSON.stringify(msg))
             }
         })
+        if (curId === event.payload.id) {
+            const session = document.getElementById('session')
+            session.querySelectorAll('chat-session').forEach(chat => {
+                if (chat.getAttribute('align') === 'left') {
+                    chat.setAttribute('name', event.payload.name)
+                }
+            })
+        }
         if (isSame) return
         const chatperson = document.createElement('chat-persons')
         persons.appendChild(chatperson)
@@ -42,6 +51,7 @@ const unlisten = async() => {
                     chatInfo.style.display = ''
                     document.getElementById('bgdiv').style.display = 'none'
                 }
+                //将原来的消息列表删除
                 const session = document.getElementById('session')
                 session.querySelectorAll('chat-session').forEach(chat => {
                     session.removeChild(chat)
@@ -55,6 +65,7 @@ const unlisten = async() => {
     await listen('chats', async(event) => {
         if (event.payload.id === curId) {
             const leftchat = document.createElement('chat-session')
+            const session = document.getElementById('session')
             session.appendChild(leftchat)
             const head = document.getElementById('head')
             const msg = {
@@ -108,6 +119,14 @@ const unlisten = async() => {
                     value: src
                 }
                 p.setAttribute('head', JSON.stringify(msg))
+                if (curId === event.payload.id) {
+                    const session = document.getElementById('session')
+                    session.querySelectorAll('chat-session').forEach(chat => {
+                        if (chat.getAttribute('align') === 'left') {
+                            chat.setAttribute('head', src)
+                        }
+                    })
+                }
             }
         })
     })
@@ -198,13 +217,26 @@ document.addEventListener('DOMContentLoaded', () => {
         img.src = head.src
         input.value = head.getAttribute('name')
         const adminBtn = dialog.querySelector('button')
-        adminBtn.onclick = () => {
+        adminBtn.onclick = async () => {
             head.src = img.src
             const input = document.querySelector('input')
             invoke('set_admin_info', { name: input.value, img: imgPath })
             head.setAttribute('name', input.value)
             dialog.close()
             adminBtn.onclick = null
+            const session = document.getElementById('session')
+            const chats = session.querySelectorAll('chat-session')
+            if (chats.length > 0) {
+                const contents = await readBinaryFile(imgPath)
+                const blob = new Blob([contents])
+                const src = URL.createObjectURL(blob)
+                chats.forEach(chat => {
+                    if (chat.getAttribute('align') === 'right') {
+                        chat.setAttribute('name', input.value)
+                        chat.setAttribute('head', src)
+                    }
+                })
+            }
         }
         dialog.showModal()
     })
