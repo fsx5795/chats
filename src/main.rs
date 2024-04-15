@@ -1,15 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use tauri::Manager;
 mod sqlsocket;
-mod cmds;
-use sqlsocket::Manager;
+//mod cmds;
+use chats::cmds;
 use log4rs;
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct Chatstory {
-    iself: bool,
-    name: String,
-    types: String,
-    msg: String,
-}
 fn main() -> () {
     let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
@@ -21,7 +15,7 @@ fn main() -> () {
     log4rs::init_config(config).unwrap();
     //网络文件缓冲区
     unsafe {
-        crate::sqlsocket::FILEDATAS.get_or_init(|| std::collections::HashMap::new());
+        chats::FILEDATAS.get_or_init(|| std::collections::HashMap::new());
     }
     //database connection
     let mut dbfile = curpath.clone();
