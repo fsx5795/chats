@@ -1,6 +1,5 @@
 pub use std::{collections::HashMap, io::Write, path::PathBuf};
 pub use tauri::Manager;
-pub type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
 pub type UdpArc = std::sync::Arc<std::net::UdpSocket>;
 pub type UidArc = std::sync::Arc<uuid::Uuid>;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -72,7 +71,7 @@ impl JsonData {
             values
         }
     }
-    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &SqlConArc, uid: &UidArc, socket: &UdpArc) -> Result<(), Box<dyn std::error::Error>> {
+    fn anaslysis(&self, ipstr: &str, addr: &std::net::SocketAddr, handle: &tauri::AppHandle, connection: &chats::SqlConArc, uid: &UidArc, socket: &UdpArc) -> Result<(), Box<dyn std::error::Error>> {
         static mut IDS: Vec<String> = Vec::new();
         match self.types.as_str() {
             //联系人上线或修改用户名
@@ -154,7 +153,7 @@ impl JsonData {
                 }
             }
             "chat" => {
-                let name = self::update_ipaddr(&self.id, &ipstr, &connection);
+                let name = chats::update_ipaddr(&self.id, &ipstr, &connection);
                 match &self.values {
                     Values::Value(msg) => {
                         handle.emit_to("main", "chats", SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
@@ -205,7 +204,7 @@ impl JsonData {
                 }
             }
             "events" => {
-                update_ipaddr(&self.id, &ipstr, &connection);
+                chats::update_ipaddr(&self.id, &ipstr, &connection);
                 if let Values::Value(msg) = &self.values {
                     if msg == "closed" {
                         handle.emit_to("main", "exited", self.id.to_string())?;
@@ -243,26 +242,7 @@ pub fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option
         Err(_) => None
     }
 }
-pub fn update_ipaddr(id: &str, ip: &str, connect: &SqlConArc) -> String {
-    let mut name = String::new();
-    let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", id);
-    connect.lock().unwrap().iterate(query, |pairs| {
-        for &(colname, value) in pairs.iter() {
-            if !ip.is_empty() {
-                if colname == "ip" && value.unwrap() != ip.to_owned() {
-                    let query = format!("UPDATE userinfo SET ip = '{}' WHERE userid = '{}';", ip, id);
-                    connect.lock().unwrap().execute(query).unwrap();
-                }
-            }
-            if colname == "name" {
-                name = value.unwrap().to_string();
-            }
-        }
-        true
-    }).unwrap();
-    name
-}
-pub fn init_socket(handle: tauri::AppHandle, connection: SqlConArc, uid: UidArc, socket: UdpArc) -> std::io::Result<()> {
+pub fn init_socket(handle: tauri::AppHandle, connection: chats::SqlConArc, uid: UidArc, socket: UdpArc) -> std::io::Result<()> {
     loop {
         let mut buf = [0; 3096];
         let (amt, addr) = socket.recv_from(&mut buf)?;

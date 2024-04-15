@@ -13,8 +13,8 @@ pub async fn close_splashscreen(window: tauri::Window) -> () {
     window.get_window("main").unwrap().open_devtools();
 }
 #[tauri::command]
-pub fn get_user_name(id: String, connection: tauri::State<crate::sqlsocket::SqlConArc>) -> String {
-    crate::sqlsocket::update_ipaddr(&id, "", &connection)
+pub fn get_user_name(id: String, connection: tauri::State<chats::SqlConArc>) -> String {
+    chats::update_ipaddr(&id, "", &connection)
 }
 #[tauri::command]
 pub fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<crate::sqlsocket::UdpArc>) -> () {
@@ -103,7 +103,7 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     String::new()
 }
 #[tauri::command]
-pub fn get_chats_history(id: String, handle: tauri::AppHandle, connection: tauri::State<crate::sqlsocket::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>) -> () {
+pub fn get_chats_history(id: String, handle: tauri::AppHandle, connection: tauri::State<chats::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>) -> () {
     let query = format!("SELECT name FROM userinfo WHERE userid = '{}';", id);
     let connect = connection.lock().unwrap();
     connect.iterate(query, |pairs| {
@@ -130,7 +130,7 @@ pub fn get_chats_history(id: String, handle: tauri::AppHandle, connection: tauri
     }).unwrap();
 }
 #[tauri::command]
-pub fn send_message(id: String, datetime: String, message: String, connection: tauri::State<crate::sqlsocket::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>, socket: tauri::State<crate::sqlsocket::UdpArc>) -> () {
+pub fn send_message(id: String, datetime: String, message: String, connection: tauri::State<chats::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>, socket: tauri::State<crate::sqlsocket::UdpArc>) -> () {
     let send_data = crate::sqlsocket::JsonData::new(&uid.to_string(), "chat", crate::sqlsocket::Values::Value(message.clone()));
     let data = serde_json::to_string(&send_data).unwrap();
     let connect = connection.lock().unwrap();
@@ -145,7 +145,7 @@ pub fn send_message(id: String, datetime: String, message: String, connection: t
     connect.execute(query).unwrap();
 }
 #[tauri::command]
-pub fn send_file(id: String, datetime: String, types: String, path: String, connection: tauri::State<crate::sqlsocket::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>, socket: tauri::State<crate::sqlsocket::UdpArc>) -> () {
+pub fn send_file(id: String, datetime: String, types: String, path: String, connection: tauri::State<chats::SqlConArc>, uid: tauri::State<crate::sqlsocket::UidArc>, socket: tauri::State<crate::sqlsocket::UdpArc>) -> () {
     let mut path = path;
     if types == "image" {
         let imgpath = crate::sqlsocket::PathBuf::from(&path);
