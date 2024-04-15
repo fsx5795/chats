@@ -1,8 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use tauri::Manager;
-mod sqlsocket;
-//mod cmds;
-use chats::cmds;
+use chats::cmds::{self, Manager};
 use log4rs;
 fn main() -> () {
     let mut curpath = std::env::current_exe().unwrap();
@@ -92,7 +89,7 @@ fn main() -> () {
         .setup(|app| {
             let apphandle = app.app_handle();
             std::thread::spawn(move || {
-                if let Err(err) = crate::sqlsocket::init_socket(apphandle, connect, id, udp) {
+                if let Err(err) = chats::init_socket(apphandle, connect, id, udp) {
                     log::error!("{}", err)
                 };
             });

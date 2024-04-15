@@ -1,6 +1,6 @@
 pub mod cmds;
+use cmds::Manager;
 pub use std::{collections::HashMap, io::Write, path::PathBuf};
-pub use tauri::Manager;
 pub type SqlConArc = std::sync::Arc<std::sync::Mutex<sqlite::Connection>>;
 pub type UidArc = std::sync::Arc<uuid::Uuid>;
 pub type UdpArc = std::sync::Arc<std::net::UdpSocket>;
@@ -48,11 +48,11 @@ pub enum Values {
 pub struct JsonData {
     id: String,
     types: String,
-    values: Values,
+    values: self::Values,
 }
 impl JsonData {
-    pub fn new(id: &str, types: &str, values: Values) -> Self {
-        JsonData {
+    pub fn new(id: &str, types: &str, values: self::Values) -> Self {
+        Self {
             id: id.to_owned(),
             types: types.to_owned(),
             values
@@ -63,8 +63,8 @@ impl JsonData {
         match self.types.as_str() {
             //联系人上线或修改用户名
             "name" => {
-                if let Values::Value(strval) = &self.values {
-                    handle.emit_to("main", "ipname", ChatUser{ id: self.id.clone(), name: strval.clone(), })?;
+                if let self::Values::Value(strval) = &self.values {
+                    handle.emit_to("main", "ipname", self::ChatUser{ id: self.id.clone(), name: strval.clone(), })?;
                     let mut nothas = true;
                     let mut same = true;
                     let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", self.id);
@@ -102,7 +102,7 @@ impl JsonData {
                 };
             }
             "headimg" => {
-                if let Values::HeadImg{status, contents} = &self.values {
+                if let self::Values::HeadImg{status, contents} = &self.values {
                     let mut curpath = std::env::current_exe()?;
                     curpath.pop();
                     curpath.push(&self.id);
@@ -129,7 +129,7 @@ impl JsonData {
                                         }
                                         self::FILEDATAS.get_mut().unwrap().remove(&cp);
                                     }
-                                    handle.emit_to("main", "userhead", ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
+                                    handle.emit_to("main", "userhead", self::ModifyHead{ id: self.id.clone(), path: cp.to_string_lossy().to_string() }).unwrap();
                                 });
                             });
                             let query = format!("UPDATE userinfo SET ip = '{}', imgpath = '{}' WHERE userid = '{}';", ipstr, curpath.to_string_lossy().to_string(), self.id);
@@ -142,14 +142,14 @@ impl JsonData {
             "chat" => {
                 let name = self::update_ipaddr(&self.id, &ipstr, &connection);
                 match &self.values {
-                    Values::Value(msg) => {
+                    self::Values::Value(msg) => {
                         handle.emit_to("main", "chats", self::SendMsg{ id: self.id.clone(), name, msg: msg.clone() })?;
                         let now: chrono::DateTime<chrono::Local> = chrono::Local::now();
                         let datetime = now.format("%Y-%m-%d %H:%M:%S");
                         let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", self.id, uid.to_owned(), datetime, "text", msg);
                         connection.lock().unwrap().execute(query).unwrap();
                     }
-                    Values::FileData { filename, types, status, contents } => {
+                    self::Values::FileData { filename, types, status, contents } => {
                         let mut curpath = std::env::current_exe()?;
                         curpath.pop();
                         curpath.push(filename);
@@ -206,7 +206,7 @@ impl JsonData {
         Ok(())
     }
 }
-pub fn update_ipaddr(id: &str, ip: &str, connect: &SqlConArc) -> String {
+pub fn update_ipaddr(id: &str, ip: &str, connect: &self::SqlConArc) -> String {
     let mut name = String::new();
     let query = format!("SELECT * FROM userinfo WHERE userid = '{}';", id);
     connect.lock().unwrap().iterate(query, |pairs| {
@@ -226,24 +226,42 @@ pub fn update_ipaddr(id: &str, ip: &str, connect: &SqlConArc) -> String {
     name
 }
 pub fn get_admin_info_json(handle: tauri::AppHandle, uid: &uuid::Uuid) -> Option<String>{
-    let jsondata = cmds::get_admin_info(handle);
+    let jsondata = crate::cmds::get_admin_info(handle);
     let name;
     if jsondata.is_empty() {
-        name = self::JsonData::new(&uid.to_string(), "name", Values::Value(String::new()));
+        name = self::JsonData::new(&uid.to_string(), "name", self::Values::Value(String::new()));
     } else {
         let jsondata = serde_json::from_str(&jsondata);
         let jsondata = match jsondata {
             Ok(data) => data,
             Err(_) => return None
         };
-        let jsondata = match serde_json::from_value::<AdminInfo>(jsondata) {
+        let jsondata = match serde_json::from_value::<self::AdminInfo>(jsondata) {
             Ok(data) => data,
             Err(_) => return None
         };
-        name = self::JsonData::new(&uid.to_string(), "name", Values::Value(jsondata.name));
+        name = self::JsonData::new(&uid.to_string(), "name", self::Values::Value(jsondata.name));
     }
     match serde_json::to_string(&name) {
         Ok(name) => Some(name),
         Err(_) => None
+    }
+}
+pub fn init_socket(handle: tauri::AppHandle, connection: self::SqlConArc, uid: self::UidArc, socket: self::UdpArc) -> std::io::Result<()> {
+    loop {
+        let mut buf = [0; 3096];
+        let (amt, addr) = socket.recv_from(&mut buf)?;
+        let jsonvalue = serde_json::from_str(&String::from_utf8_lossy(&buf[..amt]).to_string());
+        if jsonvalue.is_err() {
+            dbg!("json err:{}", jsonvalue.unwrap());
+            continue;
+        }
+        let jsonvalue = serde_json::from_value::<self::JsonData>(jsonvalue.unwrap());
+        if jsonvalue.is_err() {
+            dbg!("JsonData err");
+            continue;
+        }
+        let jsonvalue = jsonvalue?;
+        jsonvalue.anaslysis(&addr.to_string(), &addr, &handle, &connection, &uid, &socket).unwrap();
     }
 }
