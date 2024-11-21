@@ -1,6 +1,7 @@
 use std::io::ErrorKind;
-pub use tauri::Manager;
 use std::io::Read;
+pub use tauri::Manager;
+pub use tauri::Emitter;
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Chatstory {
     iself: bool,
@@ -11,20 +12,34 @@ struct Chatstory {
 #[tauri::command]
 pub async fn close_splashscreen(window: tauri::Window) -> () {
     std::thread::sleep(std::time::Duration::from_secs(1));
-    if let Some(splashscreen) = window.get_window("splashscreen") {
+    if let Some(splashscreen) = window.get_webview_window("splashscreen") {
         splashscreen.close().unwrap();
-        window.get_window("main").expect("no window labeled 'main' found").show().unwrap();
+        window
+            .get_webview_window("main")
+            .expect("no window labeled 'main' found")
+            .show()
+            .unwrap();
     }
-    window.get_window("main").unwrap().set_always_on_top(false).unwrap();
+    window
+        .get_webview_window("main")
+        .unwrap()
+        .set_always_on_top(false)
+        .unwrap();
     #[cfg(debug_assertions)]
-    window.get_window("main").unwrap().open_devtools();
+    window.get_webview_window("main").unwrap().open_devtools();
 }
 #[tauri::command]
 pub fn get_user_name(id: String, connection: tauri::State<crate::SqlConArc>) -> String {
     crate::update_ipaddr(&id, "", &connection)
 }
 #[tauri::command]
-pub fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: tauri::State<std::sync::Arc<uuid::Uuid>>, socket: tauri::State<crate::UdpArc>) -> () {
+pub fn set_admin_info(
+    name: String,
+    img: String,
+    handle: tauri::AppHandle,
+    uid: tauri::State<std::sync::Arc<uuid::Uuid>>,
+    socket: tauri::State<crate::UdpArc>,
+) -> () {
     let mut curpath = std::env::current_exe().unwrap();
     curpath.pop();
     let mut inifile = curpath.clone();
@@ -52,29 +67,62 @@ pub fn set_admin_info(name: String, img: String, handle: tauri::AppHandle, uid: 
         let uid = std::sync::Arc::clone(&uid);
         let socket = std::sync::Arc::clone(&socket);
         std::thread::spawn(move || {
-            let sendmsg = crate::JsonData::new(&uid.to_string(), "headimg", crate::Values::HeadImg{ status: String::from("start"), contents: vec![] });
+            let sendmsg = crate::JsonData::new(
+                &uid.to_string(),
+                "headimg",
+                crate::Values::HeadImg {
+                    status: String::from("start"),
+                    contents: vec![],
+                },
+            );
             let data = serde_json::to_string(&sendmsg).unwrap();
-            socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            socket
+                .send_to(&data.into_bytes(), "234.0.0.0:9527")
+                .unwrap();
             for chunk in filedata.chunks(512) {
                 std::thread::sleep(std::time::Duration::from_micros(10_000));
-                let sendmsg = crate::JsonData::new(&uid.to_string(), "headimg", crate::Values::HeadImg{ status: String::from("data"), contents: chunk.to_vec() });
+                let sendmsg = crate::JsonData::new(
+                    &uid.to_string(),
+                    "headimg",
+                    crate::Values::HeadImg {
+                        status: String::from("data"),
+                        contents: chunk.to_vec(),
+                    },
+                );
                 let data = serde_json::to_string(&sendmsg).unwrap();
-                socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+                socket
+                    .send_to(&data.into_bytes(), "234.0.0.0:9527")
+                    .unwrap();
             }
             std::thread::sleep(std::time::Duration::from_micros(10_000));
-            let sendmsg = crate::JsonData::new(&uid.to_string(), "headimg", crate::Values::HeadImg{ status: String::from("end"), contents: vec![] });
+            let sendmsg = crate::JsonData::new(
+                &uid.to_string(),
+                "headimg",
+                crate::Values::HeadImg {
+                    status: String::from("end"),
+                    contents: vec![],
+                },
+            );
             let data = serde_json::to_string(&sendmsg).unwrap();
-            socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+            socket
+                .send_to(&data.into_bytes(), "234.0.0.0:9527")
+                .unwrap();
         });
         section.insert("image".to_owned(), imgfile.to_string_lossy().to_string());
     }
     conf.write_to_file(inifile).unwrap();
 }
 #[tauri::command]
-pub fn load_finish(handle: tauri::AppHandle, uid: tauri::State<crate::UidArc>, socket: tauri::State<crate::UdpArc>) -> () {
+pub fn load_finish(
+    handle: tauri::AppHandle,
+    uid: tauri::State<crate::UidArc>,
+    socket: tauri::State<crate::UdpArc>,
+) -> () {
     let data = crate::get_admin_info_json(handle, &uid);
     if let Some(data) = data {
-        socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+        socket
+            .send_to(&data.into_bytes(), "234.0.0.0:9527")
+            .unwrap();
     };
 }
 #[tauri::command]
@@ -93,10 +141,7 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
         if let Some(value) = section.get("image") {
             image = value.to_owned();
         }
-        let json = crate::AdminInfo {
-            name,
-            image,
-        };
+        let json = crate::AdminInfo { name, image };
         return serde_json::to_string(&json).unwrap();
     } else {
         if let Err(_) = std::fs::File::create(&inifile) {
@@ -110,49 +155,95 @@ pub fn get_admin_info(handle: tauri::AppHandle) -> String {
     String::new()
 }
 #[tauri::command]
-pub fn get_chats_history(id: String, handle: tauri::AppHandle, connection: tauri::State<crate::SqlConArc>, uid: tauri::State<crate::UidArc>) -> () {
+pub fn get_chats_history(
+    id: String,
+    handle: tauri::AppHandle,
+    connection: tauri::State<crate::SqlConArc>,
+    uid: tauri::State<crate::UidArc>,
+) -> () {
     let query = format!("SELECT name FROM userinfo WHERE userid = '{}';", id);
     let connect = connection.lock().unwrap();
-    connect.iterate(query, |pairs| {
-        for &(_, value) in pairs.iter() {
-            value.unwrap();
-            let query = format!("SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';", id, id);
-            connect.iterate(query, |pairs| {
-                let mut iself = false;
-                let mut types = String::new();
-                let mut msg = String::new();
-                for &(name, value) in pairs {
-                    match name {
-                        "uuid" => iself = value.unwrap() == uid.to_string(),
-                        "type" => types = value.unwrap().to_owned(),
-                        "chatmsg" => msg = value.unwrap().to_owned(),
-                        _ => {}
-                    }
-                }
-                handle.emit_to("main", "chatstory", self::Chatstory{ iself, name: value.unwrap().to_string(), types, msg: msg.to_owned() }).unwrap();
-                true
-            }).unwrap();
-        }
-        true
-    }).unwrap();
+    connect
+        .iterate(query, |pairs| {
+            for &(_, value) in pairs.iter() {
+                value.unwrap();
+                let query = format!(
+                    "SELECT * FROM chatshistory WHERE uuid = '{}' OR targetId = '{}';",
+                    id, id
+                );
+                connect
+                    .iterate(query, |pairs| {
+                        let mut iself = false;
+                        let mut types = String::new();
+                        let mut msg = String::new();
+                        for &(name, value) in pairs {
+                            match name {
+                                "uuid" => iself = value.unwrap() == uid.to_string(),
+                                "type" => types = value.unwrap().to_owned(),
+                                "chatmsg" => msg = value.unwrap().to_owned(),
+                                _ => {}
+                            }
+                        }
+                        handle
+                            .emit_to(
+                                "main",
+                                "chatstory",
+                                self::Chatstory {
+                                    iself,
+                                    name: value.unwrap().to_string(),
+                                    types,
+                                    msg: msg.to_owned(),
+                                },
+                            )
+                            .unwrap();
+                        true
+                    })
+                    .unwrap();
+            }
+            true
+        })
+        .unwrap();
 }
 #[tauri::command]
-pub fn send_message(id: String, datetime: String, message: String, connection: tauri::State<crate::SqlConArc>, uid: tauri::State<crate::UidArc>, socket: tauri::State<crate::UdpArc>) -> () {
-    let send_data = crate::JsonData::new(&uid.to_string(), "chat", crate::Values::Value(message.clone()));
+pub fn send_message(
+    id: String,
+    datetime: String,
+    message: String,
+    connection: tauri::State<crate::SqlConArc>,
+    uid: tauri::State<crate::UidArc>,
+    socket: tauri::State<crate::UdpArc>,
+) -> () {
+    let send_data = crate::JsonData::new(
+        &uid.to_string(),
+        "chat",
+        crate::Values::Value(message.clone()),
+    );
     let data = serde_json::to_string(&send_data).unwrap();
     let connect = connection.lock().unwrap();
     let query = format!("SELECT ip FROM userinfo WHERE userid = '{}';", id);
-    connect.iterate(query, |pairs| {
-        for &(_, value) in pairs.iter() {
-            socket.send_to(&data.clone().into_bytes(), format!("{}", value.unwrap())).unwrap();
-        }
-        true
-    }).unwrap();
+    connect
+        .iterate(query, |pairs| {
+            for &(_, value) in pairs.iter() {
+                socket
+                    .send_to(&data.clone().into_bytes(), format!("{}", value.unwrap()))
+                    .unwrap();
+            }
+            true
+        })
+        .unwrap();
     let query = format!("INSERT INTO chatshistory (uuid, targetId, chattime, type, chatmsg) VALUES ('{}', '{}', '{}', '{}', '{}');", uid.to_string(), id, datetime, "text", message);
     connect.execute(query).unwrap();
 }
 #[tauri::command]
-pub fn send_file(id: String, datetime: String, types: String, path: String, connection: tauri::State<crate::SqlConArc>, uid: tauri::State<crate::UidArc>, socket: tauri::State<crate::UdpArc>) -> () {
+pub fn send_file(
+    id: String,
+    datetime: String,
+    types: String,
+    path: String,
+    connection: tauri::State<crate::SqlConArc>,
+    uid: tauri::State<crate::UidArc>,
+    socket: tauri::State<crate::UdpArc>,
+) -> () {
     let mut path = path;
     if types == "image" {
         let imgpath = crate::PathBuf::from(&path);
@@ -202,14 +293,23 @@ pub fn send_file(id: String, datetime: String, types: String, path: String, conn
     }
 }
 #[tauri::command]
-pub fn show_file(path : String) -> () {
+pub fn show_file(path: String) -> () {
     let mut path = crate::PathBuf::from(path);
     path.pop();
-    std::process::Command::new("explorer.exe").arg(path).spawn().unwrap();
+    std::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()
+        .unwrap();
 }
 #[tauri::command]
 pub fn close_window(uid: tauri::State<crate::UidArc>, socket: tauri::State<crate::UdpArc>) -> () {
-    let send_data = crate::JsonData::new(&uid.to_string(), "events", crate::Values::Value("closed".to_owned()));
+    let send_data = crate::JsonData::new(
+        &uid.to_string(),
+        "events",
+        crate::Values::Value("closed".to_owned()),
+    );
     let data = serde_json::to_string(&send_data).unwrap();
-    socket.send_to(&data.into_bytes(), "234.0.0.0:9527").unwrap();
+    socket
+        .send_to(&data.into_bytes(), "234.0.0.0:9527")
+        .unwrap();
 }

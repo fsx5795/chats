@@ -4,10 +4,10 @@ version = '0.0.0'
 edition = '2021'
 
 [build-dependencies]
-tauri-build = { version = "^1", features = [] }
+tauri-build = { version = "*", features = [] }
 
 [dependencies]
-tauri = { version = "*", features = [ "window-hide", "window-close", "window-show", "window-create", "notification-all", "path-all", "dialog-message", "fs-read-file", "dialog-save", "dialog-open", "system-tray"] }
+tauri = { version = "*", features = ["tray-icon"] }
 serde = "*"
 serde_json = "*"
 rust-ini = "*"
@@ -16,6 +16,9 @@ uuid = "*"
 chrono = "*"
 log = "*"
 log4rs = "*"
+tauri-plugin-fs = "*"
+tauri-plugin-dialog = "*"
+tauri-plugin-notification = "*"
 
 [source.crates-io]
 replace-with = 'ustc'

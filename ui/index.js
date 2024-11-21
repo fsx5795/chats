@@ -11,7 +11,10 @@ function getDateTime() {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 const { listen } = window.__TAURI__.event
-const { invoke } = window.__TAURI__.tauri
+//const { invoke } = window.__TAURI__.tauri
+//const invoke = window.__TAURI__.core.invoke
+//const invoke = window.__TAURI_INVOKE__
+import { invoke } from '@tauri-apps/api/core'
 const { readBinaryFile } = window.__TAURI__.fs
 const unlisten = async() => {
     await listen('ipname', event => {
